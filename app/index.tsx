@@ -9,7 +9,7 @@ export default function Index() {
   useEffect(() => {
     if (loading) return;
     if (user) {
-      router.replace('/areas');
+      router.replace('/(tabs)/areas');
     } else {
       router.replace('/(auth)/login');
     }

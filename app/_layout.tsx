@@ -3,14 +3,11 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { Pressable } from 'react-native';
 import 'react-native-reanimated';
 
 import { AuthProvider } from '@/lib/auth-context';
 import { EarthyDarkTheme } from '@/constants/Theme';
 import { ThemeProvider } from '@react-navigation/native';
-import { useAuth } from '@/lib/auth-context';
-import { router } from 'expo-router';
 import Colors from '@/constants/Colors';
 
 export { ErrorBoundary } from 'expo-router';
@@ -45,8 +42,6 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const { user } = useAuth();
-
   return (
     <Stack
       screenOptions={{
@@ -57,20 +52,21 @@ function RootLayoutNav() {
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
-        name="areas"
+        name="add-area"
         options={{
-          title: 'Areas',
-          headerRight: () =>
-            user ? (
-              <Pressable onPress={() => router.push('/profile')} style={{ marginRight: 16 }}>
-                <FontAwesome name="user" size={22} color={Colors.dark.text} />
-              </Pressable>
-            ) : null,
+          title: 'Add Area',
+          headerBackTitle: 'Areas',
         }}
       />
-      <Stack.Screen name="add-area" options={{ title: 'Add Area' }} />
-      <Stack.Screen name="profile" options={{ title: 'Profile' }} />
+      <Stack.Screen
+        name="edit-profile"
+        options={{
+          title: 'Edit Profile',
+          headerBackTitle: 'Profile',
+        }}
+      />
     </Stack>
   );
 }

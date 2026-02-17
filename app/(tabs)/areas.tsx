@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { StyleSheet, FlatList, Pressable, RefreshControl } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { router } from 'expo-router';
 import { Text, View } from '@/components/Themed';
 import { supabase } from '@/lib/supabase';
@@ -18,6 +20,7 @@ export default function AreasScreen() {
   const [areas, setAreas] = useState<Area[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const { user } = useAuth();
+  const tabBarHeight = useBottomTabBarHeight();
 
   const fetchAreas = async () => {
     const { data } = await supabase
@@ -28,9 +31,11 @@ export default function AreasScreen() {
     setAreas(data ?? []);
   };
 
-  useEffect(() => {
-    fetchAreas();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchAreas();
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -63,7 +68,7 @@ export default function AreasScreen() {
       />
       {user && (
         <Pressable
-          style={[styles.fab, { backgroundColor: Colors.dark.tint }]}
+          style={[styles.fab, { backgroundColor: Colors.dark.tint, bottom: tabBarHeight + 16 }]}
           onPress={() => router.push('/add-area')}
         >
           <FontAwesome name="plus" size={24} color="#fff" />
@@ -75,7 +80,7 @@ export default function AreasScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  list: { padding: 16, paddingBottom: 80 },
+  list: { padding: 16, paddingBottom: 100 },
   card: {
     padding: 16,
     borderRadius: 12,
@@ -92,7 +97,6 @@ const styles = StyleSheet.create({
   emptySubtext: { fontSize: 14, opacity: 0.7, color: Colors.dark.text },
   fab: {
     position: 'absolute',
-    bottom: 24,
     right: 24,
     width: 56,
     height: 56,
