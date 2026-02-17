@@ -67,6 +67,34 @@ function RootLayoutNav() {
           headerBackTitle: 'Profile',
         }}
       />
+      <Stack.Screen
+        name="area/[id]"
+        options={{
+          title: 'Area',
+          headerBackTitle: 'Areas',
+        }}
+      />
+      <Stack.Screen
+        name="add-sector"
+        options={{
+          title: 'Add Sector',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="sector/[id]"
+        options={{
+          title: 'Sector',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="add-boulder"
+        options={{
+          title: 'Add Boulder',
+          headerBackTitle: 'Back',
+        }}
+      />
     </Stack>
   );
 }
