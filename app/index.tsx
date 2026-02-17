@@ -9,7 +9,7 @@ export default function Index() {
   useEffect(() => {
     if (loading) return;
     if (user) {
-      router.replace('/(tabs)');
+      router.replace('/areas');
     } else {
       router.replace('/(auth)/login');
     }
@@ -17,7 +17,7 @@ export default function Index() {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" />
+      <ActivityIndicator size="large" color="#c4704a" />
     </View>
   );
 }
@@ -27,5 +27,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#1a1412',
   },
 });

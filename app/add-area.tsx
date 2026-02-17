@@ -4,6 +4,7 @@ import { StyleSheet, TextInput, Pressable, ScrollView, Alert } from 'react-nativ
 import { Text, View } from '@/components/Themed';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
+import Colors from '@/constants/Colors';
 
 export default function AddAreaScreen() {
   const [name, setName] = useState('');
@@ -43,7 +44,7 @@ export default function AddAreaScreen() {
         <TextInput
           style={styles.input}
           placeholder="e.g. Buttermilks, Rocklands"
-          placeholderTextColor="#999"
+          placeholderTextColor="rgba(196, 167, 125, 0.5)"
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
@@ -51,8 +52,8 @@ export default function AddAreaScreen() {
         <Text style={styles.label}>Description</Text>
         <TextInput
           style={[styles.input, styles.textArea]}
-          placeholder="Brief description of the area..."
-          placeholderTextColor="#999"
+          placeholder="Brief description..."
+          placeholderTextColor="rgba(196, 167, 125, 0.5)"
           value={description}
           onChangeText={setDescription}
           multiline
@@ -71,45 +72,27 @@ export default function AddAreaScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-  },
-  form: {
-    gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 12,
-    marginBottom: 4,
-  },
+  container: { flex: 1, backgroundColor: Colors.dark.background },
+  content: { padding: 16 },
+  form: { gap: 8 },
+  label: { fontSize: 14, fontWeight: '600', marginTop: 12, marginBottom: 4, color: Colors.dark.text },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: Colors.dark.inputBorder,
     borderRadius: 8,
     padding: 14,
     fontSize: 16,
+    backgroundColor: Colors.dark.card,
+    color: Colors.dark.text,
   },
-  textArea: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
+  textArea: { minHeight: 100, textAlignVertical: 'top' },
   button: {
-    backgroundColor: '#2f95dc',
+    backgroundColor: Colors.dark.tint,
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 24,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  buttonDisabled: { opacity: 0.6 },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

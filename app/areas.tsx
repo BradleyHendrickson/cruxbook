@@ -2,12 +2,10 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, FlatList, Pressable, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { Text, View } from '@/components/Themed';
-import AreaCard from '@/components/AreaCard';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
 
 type Area = {
   id: string;
@@ -16,24 +14,17 @@ type Area = {
   boulder_count: number;
 };
 
-export default function ExploreScreen() {
+export default function AreasScreen() {
   const [areas, setAreas] = useState<Area[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { user } = useAuth();
-  const colorScheme = useColorScheme();
 
   const fetchAreas = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('areas')
       .select('id, name, description, boulder_count')
       .is('parent_id', null)
       .order('name');
-
-    if (error) {
-      console.error('Error fetching areas:', error);
-      return;
-    }
     setAreas(data ?? []);
   };
 
@@ -53,32 +44,27 @@ export default function ExploreScreen() {
         data={areas}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <AreaCard
-            id={item.id}
-            name={item.name}
-            description={item.description}
-            boulderCount={item.boulder_count}
-          />
+          <View style={styles.card}>
+            <Text style={styles.name}>{item.name}</Text>
+            {item.description ? (
+              <Text style={styles.description} numberOfLines={2}>{item.description}</Text>
+            ) : null}
+            <Text style={styles.count}>{item.boulder_count} boulder{item.boulder_count !== 1 ? 's' : ''}</Text>
+          </View>
         )}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          !loading ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>No areas yet</Text>
-              <Text style={styles.emptySubtext}>
-                {user ? 'Tap + to add the first area' : 'Sign in to add areas'}
-              </Text>
-            </View>
-          ) : null
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>No areas yet</Text>
+            {user && <Text style={styles.emptySubtext}>Tap + to add an area</Text>}
+          </View>
         }
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
       {user && (
         <Pressable
-          style={[styles.fab, { backgroundColor: Colors[colorScheme ?? 'light'].tint }]}
-          onPress={() => router.push('/add/area')}
+          style={[styles.fab, { backgroundColor: Colors.dark.tint }]}
+          onPress={() => router.push('/add-area')}
         >
           <FontAwesome name="plus" size={24} color="#fff" />
         </Pressable>
@@ -88,26 +74,22 @@ export default function ExploreScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  list: {
+  container: { flex: 1 },
+  list: { padding: 16, paddingBottom: 80 },
+  card: {
     padding: 16,
-    paddingBottom: 80,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.dark.cardBorder,
+    backgroundColor: Colors.dark.card,
   },
-  empty: {
-    padding: 48,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    opacity: 0.7,
-  },
+  name: { fontSize: 18, fontWeight: '600', marginBottom: 4, color: Colors.dark.text },
+  description: { fontSize: 14, opacity: 0.8, marginBottom: 8, color: Colors.dark.text },
+  count: { fontSize: 12, opacity: 0.6, color: Colors.dark.text },
+  empty: { padding: 48, alignItems: 'center' },
+  emptyText: { fontSize: 18, fontWeight: '600', marginBottom: 8, color: Colors.dark.text },
+  emptySubtext: { fontSize: 14, opacity: 0.7, color: Colors.dark.text },
   fab: {
     position: 'absolute',
     bottom: 24,

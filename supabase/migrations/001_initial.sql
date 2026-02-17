@@ -46,17 +46,29 @@ CREATE TABLE boulders (
   avg_grade DOUBLE PRECISION,
   vote_count INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  CONSTRAINT sector_must_belong_to_area CHECK (
-    sector_id IS NULL OR EXISTS (
-      SELECT 1 FROM sectors s WHERE s.id = sector_id AND s.area_id = boulders.area_id
-    )
-  )
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL
 );
 
 CREATE INDEX idx_boulders_area ON boulders(area_id);
 CREATE INDEX idx_boulders_sector ON boulders(sector_id);
 CREATE INDEX idx_boulders_created_by ON boulders(created_by);
+
+-- Trigger: ensure sector belongs to area when sector_id is set
+CREATE OR REPLACE FUNCTION check_sector_belongs_to_area()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.sector_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM sectors s WHERE s.id = NEW.sector_id AND s.area_id = NEW.area_id
+  ) THEN
+    RAISE EXCEPTION 'sector_id must belong to the same area as the boulder';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_check_sector_belongs_to_area
+  BEFORE INSERT OR UPDATE ON boulders
+  FOR EACH ROW EXECUTE FUNCTION check_sector_belongs_to_area();
 
 -- Grade votes: one per user per boulder, averaged for display
 CREATE TABLE grade_votes (
