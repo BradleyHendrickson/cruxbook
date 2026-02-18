@@ -6,11 +6,17 @@ import {
   RefreshControl,
   ActivityIndicator,
   Text,
+  View,
+  Modal,
 } from 'react-native';
+import MapView, { Marker, Callout } from 'react-native-maps';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import MapLocationPicker from '@/components/MapLocationPicker';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { Text as ThemedText, View } from '@/components/Themed';
+import { Text as ThemedText } from '@/components/Themed';
 import { supabase } from '@/lib/supabase';
+import { gradeToLabel } from '@/constants/Grades';
 import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
 
@@ -19,57 +25,94 @@ type Sector = {
   name: string;
   description: string | null;
   boulder_count: number;
+  lat: number | null;
+  lng: number | null;
+};
+
+type BoulderMarker = {
+  id: string;
+  name: string;
+  avg_grade: number | null;
+  lat: number;
+  lng: number;
 };
 
 export default function AreaDetailScreen() {
-  const params = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; openMap?: string }>();
   const id = typeof params.id === 'string' ? params.id : params.id?.[0];
   const [areaName, setAreaName] = useState<string>('');
   const [sectors, setSectors] = useState<Sector[]>([]);
+  const [boulders, setBoulders] = useState<BoulderMarker[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const openMap = typeof params.openMap === 'string' ? params.openMap : params.openMap?.[0];
+  const [viewMode, setViewMode] = useState<'list' | 'map'>(
+    openMap === '1' ? 'map' : 'list'
+  );
+  const [areaLat, setAreaLat] = useState<number | null>(null);
+  const [areaLng, setAreaLng] = useState<number | null>(null);
+  const [locationPickerVisible, setLocationPickerVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
   const hasLoadedOnce = useRef(false);
   const { user } = useAuth();
   const navigation = useNavigation();
 
+  const sectorsWithLocation = sectors.filter(
+    (s) => s.lat != null && s.lng != null
+  );
+  const mapItems = [...sectorsWithLocation, ...boulders];
+
   useEffect(() => {
     navigation.setOptions({
       title: areaName || 'Area',
-      headerRight: user
-        ? () => (
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: '/add-sector',
-                  params: { areaId: id, areaName },
-                })
-              }
-              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
-              hitSlop={12}
-            >
-              <Text style={styles.headerAdd}>+</Text>
-            </Pressable>
-          )
-        : undefined,
+      headerRight: () => (
+        <View style={styles.headerRight}>
+          <Pressable
+            onPress={() => setMenuVisible(true)}
+            style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
+            hitSlop={8}
+          >
+            <Text style={styles.headerActions}>Actions</Text>
+          </Pressable>
+        </View>
+      ),
     });
-  }, [areaName, navigation, user, id]);
+  }, [areaName, navigation, id]);
 
   const fetchAreaAndSectors = async () => {
     if (!id) return;
     const { data: areaData } = await supabase
       .from('areas')
-      .select('name')
+      .select('name, lat, lng')
       .eq('id', id)
       .single();
     setAreaName(areaData?.name ?? 'Area');
+    setAreaLat(areaData?.lat ?? null);
+    setAreaLng(areaData?.lng ?? null);
 
     const { data: sectorsData } = await supabase
       .from('sectors')
-      .select('id, name, description, boulder_count')
+      .select('id, name, description, boulder_count, lat, lng')
       .eq('area_id', id)
       .order('sort_order')
       .order('name');
     setSectors(sectorsData ?? []);
+
+    const { data: bouldersData } = await supabase
+      .from('boulders')
+      .select('id, name, avg_grade, lat, lng')
+      .eq('area_id', id)
+      .not('lat', 'is', null)
+      .not('lng', 'is', null);
+    setBoulders(
+      (bouldersData ?? []).map((b) => ({
+        id: b.id,
+        name: b.name,
+        avg_grade: b.avg_grade,
+        lat: b.lat!,
+        lng: b.lng!,
+      }))
+    );
   };
 
   useEffect(() => {
@@ -110,8 +153,193 @@ export default function AreaDetailScreen() {
     );
   }
 
+  const AreaMenu = () => (
+    <Modal
+      visible={menuVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={() => setMenuVisible(false)}
+    >
+      <Pressable
+        style={styles.menuOverlay}
+        onPress={() => setMenuVisible(false)}
+      >
+        <View style={styles.menuContainer}>
+          <Pressable
+            style={[styles.menuItem, !user && styles.menuItemLast]}
+            onPress={() => {
+              setMenuVisible(false);
+              setViewMode((m) => (m === 'list' ? 'map' : 'list'));
+            }}
+          >
+            <FontAwesome name="map" size={16} color={Colors.dark.tint} />
+            <Text style={styles.menuItemText}>
+              {viewMode === 'list' ? 'View Area Map' : 'View List'}
+            </Text>
+          </Pressable>
+          {user && (
+            <>
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuVisible(false);
+                  setLocationPickerVisible(true);
+                }}
+              >
+                <FontAwesome name="map-marker" size={16} color={Colors.dark.tint} />
+                <Text style={styles.menuItemText}>Edit location</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.menuItem, styles.menuItemLast]}
+                onPress={() => {
+                  setMenuVisible(false);
+                  router.push({
+                    pathname: '/add-sector',
+                    params: { areaId: id, areaName },
+                  });
+                }}
+              >
+                <FontAwesome name="plus" size={16} color={Colors.dark.tint} />
+                <Text style={styles.menuItemText}>Add Sector</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      </Pressable>
+    </Modal>
+  );
+
+  if (viewMode === 'map') {
+    if (mapItems.length === 0) {
+      return (
+        <>
+          <AreaMenu />
+          <View style={styles.container}>
+          <View style={styles.emptyMap}>
+            <View style={{ opacity: 0.4 }}>
+              <FontAwesome name="map" size={48} color={Colors.dark.text} />
+            </View>
+            <ThemedText style={styles.emptyMapTitle}>No locations yet</ThemedText>
+            <ThemedText style={styles.emptyMapText}>
+              Add locations when creating sectors and boulders to see them on the map.
+            </ThemedText>
+          </View>
+        </View>
+        </>
+      );
+    }
+    const lats = mapItems.map((i) =>
+      'boulder_count' in i ? (i as Sector).lat! : (i as BoulderMarker).lat
+    );
+    const lngs = mapItems.map((i) =>
+      'boulder_count' in i ? (i as Sector).lng! : (i as BoulderMarker).lng
+    );
+    const region = {
+      latitude: lats.reduce((a, b) => a + b, 0) / lats.length,
+      longitude: lngs.reduce((a, b) => a + b, 0) / lngs.length,
+      latitudeDelta: 0.02,
+      longitudeDelta: 0.02,
+    };
+    return (
+      <>
+        <AreaMenu />
+        <View style={styles.container}>
+        <MapLocationPicker
+          visible={locationPickerVisible}
+          onClose={() => setLocationPickerVisible(false)}
+          onConfirm={async (newLat, newLng) => {
+            if (!id) return;
+            const { error } = await supabase
+              .from('areas')
+              .update({ lat: newLat, lng: newLng })
+              .eq('id', id);
+            if (!error) {
+              setAreaLat(newLat);
+              setAreaLng(newLng);
+              setLocationPickerVisible(false);
+            }
+          }}
+          initialLat={areaLat}
+          initialLng={areaLng}
+        />
+        <MapView style={styles.map} initialRegion={region}>
+          {sectorsWithLocation.map((s) => (
+            <Marker
+              key={`sector-${s.id}`}
+              coordinate={{ latitude: s.lat!, longitude: s.lng! }}
+              title={s.name}
+              description={`${s.boulder_count} boulder${s.boulder_count !== 1 ? 's' : ''}`}
+              pinColor={Colors.dark.tint}
+              onCalloutPress={() =>
+                router.push({
+                  pathname: `/sector/${s.id}`,
+                  params: { areaId: id, sectorName: s.name, areaName },
+                })
+              }
+            >
+              <Callout tooltip={false}>
+                <View style={styles.callout}>
+                  <ThemedText style={styles.calloutTitle}>{s.name}</ThemedText>
+                  <ThemedText style={styles.calloutSub}>
+                    {s.boulder_count} boulder{s.boulder_count !== 1 ? 's' : ''}
+                  </ThemedText>
+                  <ThemedText style={styles.calloutHint}>Tap to view</ThemedText>
+                </View>
+              </Callout>
+            </Marker>
+          ))}
+          {boulders.map((b) => (
+            <Marker
+              key={`boulder-${b.id}`}
+              coordinate={{ latitude: b.lat, longitude: b.lng }}
+              title={b.name}
+              description={gradeToLabel(b.avg_grade)}
+              onCalloutPress={() =>
+                router.push({
+                  pathname: `/boulder/${b.id}`,
+                  params: { areaId: id, areaName },
+                })
+              }
+            >
+              <Callout tooltip={false}>
+                <View style={styles.callout}>
+                  <ThemedText style={styles.calloutTitle}>{b.name}</ThemedText>
+                  <ThemedText style={styles.calloutGrade}>
+                    {gradeToLabel(b.avg_grade)}
+                  </ThemedText>
+                  <ThemedText style={styles.calloutHint}>Tap to view</ThemedText>
+                </View>
+              </Callout>
+            </Marker>
+          ))}
+        </MapView>
+      </View>
+      </>
+    );
+  }
+
   return (
-    <View style={styles.container}>
+    <>
+      <AreaMenu />
+      <View style={styles.container}>
+      <MapLocationPicker
+        visible={locationPickerVisible}
+        onClose={() => setLocationPickerVisible(false)}
+        onConfirm={async (newLat, newLng) => {
+          if (!id) return;
+          const { error } = await supabase
+            .from('areas')
+            .update({ lat: newLat, lng: newLng })
+            .eq('id', id);
+          if (!error) {
+            setAreaLat(newLat);
+            setAreaLng(newLng);
+            setLocationPickerVisible(false);
+          }
+        }}
+        initialLat={areaLat}
+        initialLng={areaLng}
+      />
       <FlatList
         data={sectors}
         keyExtractor={(item) => item.id}
@@ -154,6 +382,7 @@ export default function AreaDetailScreen() {
         }
       />
     </View>
+    </>
   );
 }
 
@@ -195,11 +424,98 @@ const styles = StyleSheet.create({
     opacity: 0.7,
     color: Colors.dark.text,
   },
-  headerAdd: {
-    fontSize: 28,
-    fontWeight: '300',
-    color: Colors.dark.text,
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 20,
+    paddingRight: 16,
+  },
+  headerActions: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.dark.tint,
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 56,
+    paddingRight: 16,
+  },
+  menuContainer: {
+    backgroundColor: Colors.dark.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.dark.cardBorder,
+    minWidth: 180,
+    overflow: 'hidden',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
     paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.cardBorder,
+  },
+  menuItemLast: {
+    borderBottomWidth: 0,
+  },
+  menuItemText: {
+    color: Colors.dark.text,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  map: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  emptyMap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyMapTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.dark.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyMapText: {
+    fontSize: 14,
+    color: Colors.dark.text,
+    opacity: 0.7,
+    textAlign: 'center',
+  },
+  callout: {
+    minWidth: 120,
+    padding: 8,
+  },
+  calloutTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.dark.text,
+  },
+  calloutSub: {
+    fontSize: 12,
+    color: Colors.dark.tint,
+    marginTop: 2,
+  },
+  calloutGrade: {
+    fontSize: 12,
+    color: Colors.dark.tint,
+    marginTop: 2,
+  },
+  calloutHint: {
+    fontSize: 11,
+    color: Colors.dark.text,
+    opacity: 0.6,
+    marginTop: 4,
   },
   text: { color: Colors.dark.text },
 });

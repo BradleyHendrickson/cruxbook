@@ -95,6 +95,13 @@ function RootLayoutNav() {
           headerBackTitle: 'Back',
         }}
       />
+      <Stack.Screen
+        name="boulder/[id]"
+        options={{
+          title: 'Boulder',
+          headerBackTitle: 'Back',
+        }}
+      />
     </Stack>
   );
 }

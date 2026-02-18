@@ -13,6 +13,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, View } from '@/components/Themed';
+import MapLocationPicker from '@/components/MapLocationPicker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
@@ -44,6 +45,9 @@ export default function AddBoulderScreen() {
   const [selectedGrade, setSelectedGrade] = useState<number>(GRADE_NONE);
   const [gradeModalVisible, setGradeModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+  const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -76,6 +80,8 @@ export default function AddBoulderScreen() {
         name: name.trim(),
         description: description.trim() || null,
         avg_grade: selectedGrade === GRADE_NONE ? null : selectedGrade,
+        lat: lat,
+        lng: lng,
         created_by: user.id,
       });
       if (error) throw error;
@@ -198,6 +204,34 @@ export default function AddBoulderScreen() {
             </Picker>
           </View>
         )}
+        <Text style={styles.label}>Location (optional)</Text>
+        <Pressable
+          style={styles.selector}
+          onPress={() => setLocationPickerVisible(true)}
+        >
+          <Text
+            style={[
+              styles.selectorText,
+              lat == null && styles.selectorPlaceholder,
+            ]}
+          >
+            {lat != null && lng != null
+              ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+              : 'Tap to set location on map'}
+          </Text>
+          <FontAwesome name="map-marker" size={16} color={Colors.dark.tint} />
+        </Pressable>
+        {lat != null && lng != null && (
+          <Pressable
+            onPress={() => {
+              setLat(null);
+              setLng(null);
+            }}
+            style={styles.clearLocation}
+          >
+            <Text style={styles.clearLocationText}>Clear location</Text>
+          </Pressable>
+        )}
         <Text style={styles.label}>Description</Text>
         <TextInput
           style={[styles.input, styles.textArea]}
@@ -218,6 +252,17 @@ export default function AddBoulderScreen() {
           </Text>
         </Pressable>
       </View>
+      <MapLocationPicker
+        visible={locationPickerVisible}
+        onClose={() => setLocationPickerVisible(false)}
+        onConfirm={(newLat, newLng) => {
+          setLat(newLat);
+          setLng(newLng);
+          setLocationPickerVisible(false);
+        }}
+        initialLat={lat}
+        initialLng={lng}
+      />
     </ScrollView>
   );
 }
@@ -308,6 +353,14 @@ const styles = StyleSheet.create({
   },
   gradeListContent: {
     paddingBottom: 24,
+  },
+  clearLocation: {
+    marginTop: 8,
+    paddingVertical: 4,
+  },
+  clearLocationText: {
+    fontSize: 14,
+    color: Colors.dark.tint,
   },
   pickerWrapper: {
     borderWidth: 1,
