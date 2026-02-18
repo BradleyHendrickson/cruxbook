@@ -9,8 +9,8 @@ import {
   Text,
   Modal,
 } from 'react-native';
-import MapView, { Marker, Callout } from 'react-native-maps';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import SectorMapView from '@/components/SectorMapView';
 import MapLocationPicker from '@/components/MapLocationPicker';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -253,40 +253,22 @@ export default function SectorDetailScreen() {
           initialLat={sectorLat}
           initialLng={sectorLng}
         />
-        <MapView style={styles.map} initialRegion={region}>
-          {bouldersWithLocation.map((b) => (
-            <Marker
-              key={b.id}
-              coordinate={{
-                latitude: b.lat!,
-                longitude: b.lng!,
-              }}
-              title={b.name}
-              description={gradeToLabel(b.avg_grade)}
-              onCalloutPress={() =>
-                router.push({
-                  pathname: `/boulder/${b.id}`,
-                  params: {
-                    sectorId: id,
-                    areaId: areaId ?? '',
-                    sectorName: sectorName ?? '',
-                    areaName: areaName ?? '',
-                  },
-                })
-              }
-            >
-              <Callout tooltip={false}>
-                <View style={styles.callout}>
-                  <Text style={styles.calloutTitle}>{b.name}</Text>
-                  <Text style={styles.calloutGrade}>
-                    {gradeToLabel(b.avg_grade)}
-                  </Text>
-                  <Text style={styles.calloutHint}>Tap to view</Text>
-                </View>
-              </Callout>
-            </Marker>
-          ))}
-        </MapView>
+        <View style={styles.map}>
+          <SectorMapView
+            boulders={bouldersWithLocation.map((b) => ({
+              id: b.id,
+              name: b.name,
+              avg_grade: b.avg_grade,
+              lat: b.lat!,
+              lng: b.lng!,
+            }))}
+            region={region}
+            sectorId={id ?? ''}
+            areaId={areaId ?? ''}
+            sectorName={sectorName ?? ''}
+            areaName={areaName ?? ''}
+          />
+        </View>
         </View>
       </>
     );

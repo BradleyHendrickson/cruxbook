@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import {
   StyleSheet,
   TextInput,
@@ -9,10 +9,13 @@ import {
   Platform,
   Modal,
   FlatList,
+  ActivityIndicator,
+  View,
+  Text,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text, View } from '@/components/Themed';
+import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import MapLocationPicker from '@/components/MapLocationPicker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
@@ -24,23 +27,17 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 const GRADE_NONE = -1;
 const STYLE_NONE = '';
 
-export default function AddBoulderScreen() {
+export default function EditBoulderScreen() {
   const params = useLocalSearchParams<{
+    boulderId: string;
     sectorId: string;
     areaId: string;
     sectorName: string;
     areaName: string;
   }>();
-  const sectorId =
-    typeof params.sectorId === 'string'
-      ? params.sectorId
-      : params.sectorId?.[0];
-  const areaId =
-    typeof params.areaId === 'string' ? params.areaId : params.areaId?.[0];
-  const sectorName =
-    typeof params.sectorName === 'string'
-      ? params.sectorName
-      : params.sectorName?.[0];
+  const boulderId = typeof params.boulderId === 'string' ? params.boulderId : params.boulderId?.[0];
+  const sectorId = typeof params.sectorId === 'string' ? params.sectorId : params.sectorId?.[0];
+  const areaId = typeof params.areaId === 'string' ? params.areaId : params.areaId?.[0];
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -51,66 +48,88 @@ export default function AddBoulderScreen() {
   const [selectedGrade, setSelectedGrade] = useState<number>(GRADE_NONE);
   const [gradeModalVisible, setGradeModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
 
   useEffect(() => {
-    if (sectorName) {
-      navigation.setOptions({ headerBackTitle: sectorName });
-    }
-  }, [sectorName, navigation]);
+    const fetchBoulder = async () => {
+      if (!boulderId) return;
+      const { data } = await supabase
+        .from('boulders')
+        .select('name, description, height, style, first_ascent_name, first_ascent_date, avg_grade, lat, lng')
+        .eq('id', boulderId)
+        .single();
+      if (data) {
+        setName(data.name ?? '');
+        setDescription(data.description ?? '');
+        setHeight(data.height ?? '');
+        setSelectedStyle(data.style ?? STYLE_NONE);
+        setFirstAscentName(data.first_ascent_name ?? '');
+        setFirstAscentDate(data.first_ascent_date ?? '');
+        setSelectedGrade(data.avg_grade ?? GRADE_NONE);
+        setLat(data.lat ?? null);
+        setLng(data.lng ?? null);
+      }
+      setFetching(false);
+    };
+    fetchBoulder();
+  }, [boulderId]);
 
   const handleSubmit = async () => {
     if (!name.trim()) {
       Alert.alert('Error', 'Please enter a boulder name');
       return;
     }
-    if (!sectorId || !areaId) {
-      Alert.alert('Error', 'Missing sector or area');
-      return;
-    }
-    if (!user) {
-      Alert.alert('Error', 'You must be signed in to add boulders');
+    if (!boulderId || !user) {
+      Alert.alert('Error', 'Invalid boulder or not signed in');
       return;
     }
 
     setLoading(true);
     try {
-      const { error } = await supabase.from('boulders').insert({
-        area_id: areaId,
-        sector_id: sectorId,
-        name: name.trim(),
-        description: description.trim() || null,
-        height: height.trim() || null,
-        style: selectedStyle || null,
-        first_ascent_name: firstAscentName.trim() || null,
-        first_ascent_date: firstAscentDate.trim() || null,
-        avg_grade: selectedGrade === GRADE_NONE ? null : selectedGrade,
-        lat: lat,
-        lng: lng,
-        created_by: user.id,
-      });
+      const { error } = await supabase
+        .from('boulders')
+        .update({
+          name: name.trim(),
+          description: description.trim() || null,
+          height: height.trim() || null,
+          style: selectedStyle || null,
+          first_ascent_name: firstAscentName.trim() || null,
+          first_ascent_date: firstAscentDate.trim() || null,
+          avg_grade: selectedGrade === GRADE_NONE ? null : selectedGrade,
+          lat,
+          lng,
+        })
+        .eq('id', boulderId);
       if (error) throw error;
       router.back();
     } catch (err: unknown) {
       Alert.alert(
         'Error',
-        err instanceof Error ? err.message : 'Failed to create boulder'
+        err instanceof Error ? err.message : 'Failed to update boulder'
       );
     } finally {
       setLoading(false);
     }
   };
 
-  if (!sectorId || !areaId) {
+  if (!boulderId) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.text}>Invalid sector</Text>
-      </View>
+      <ThemedView style={styles.center}>
+        <ThemedText style={styles.text}>Invalid boulder</ThemedText>
+      </ThemedView>
+    );
+  }
+
+  if (fetching) {
+    return (
+      <ThemedView style={styles.center}>
+        <ActivityIndicator size="large" color={Colors.dark.tint} />
+      </ThemedView>
     );
   }
 
@@ -214,34 +233,6 @@ export default function AddBoulderScreen() {
             </Picker>
           </View>
         )}
-        <Text style={styles.label}>Location (optional)</Text>
-        <Pressable
-          style={styles.selector}
-          onPress={() => setLocationPickerVisible(true)}
-        >
-          <Text
-            style={[
-              styles.selectorText,
-              lat == null && styles.selectorPlaceholder,
-            ]}
-          >
-            {lat != null && lng != null
-              ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
-              : 'Tap to set location on map'}
-          </Text>
-          <FontAwesome name="map-marker" size={16} color={Colors.dark.tint} />
-        </Pressable>
-        {lat != null && lng != null && (
-          <Pressable
-            onPress={() => {
-              setLat(null);
-              setLng(null);
-            }}
-            style={styles.clearLocation}
-          >
-            <Text style={styles.clearLocationText}>Clear location</Text>
-          </Pressable>
-        )}
         <Text style={styles.label}>Height (optional)</Text>
         <TextInput
           style={styles.input}
@@ -287,6 +278,34 @@ export default function AddBoulderScreen() {
           value={firstAscentDate}
           onChangeText={setFirstAscentDate}
         />
+        <Text style={styles.label}>Location (optional)</Text>
+        <Pressable
+          style={styles.selector}
+          onPress={() => setLocationPickerVisible(true)}
+        >
+          <Text
+            style={[
+              styles.selectorText,
+              lat == null && styles.selectorPlaceholder,
+            ]}
+          >
+            {lat != null && lng != null
+              ? `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+              : 'Tap to set location on map'}
+          </Text>
+          <FontAwesome name="map-marker" size={16} color={Colors.dark.tint} />
+        </Pressable>
+        {lat != null && lng != null && (
+          <Pressable
+            onPress={() => {
+              setLat(null);
+              setLng(null);
+            }}
+            style={styles.clearLocation}
+          >
+            <Text style={styles.clearLocationText}>Clear location</Text>
+          </Pressable>
+        )}
         <Text style={styles.label}>Description</Text>
         <TextInput
           style={[styles.input, styles.textArea]}
@@ -303,7 +322,7 @@ export default function AddBoulderScreen() {
           disabled={loading}
         >
           <Text style={styles.buttonText}>
-            {loading ? 'Creating...' : 'Create Boulder'}
+            {loading ? 'Saving...' : 'Save Changes'}
           </Text>
         </Pressable>
       </View>
@@ -325,6 +344,7 @@ export default function AddBoulderScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background },
   content: { padding: 16 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   form: { gap: 8 },
   label: {
     fontSize: 14,

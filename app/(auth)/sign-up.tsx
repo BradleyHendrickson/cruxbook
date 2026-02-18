@@ -52,12 +52,18 @@ export default function SignUpScreen() {
     }
     setLoading(true);
     try {
-      const { error: err } = await supabase.auth.signUp({
+      const { data: authData, error: err } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: { data: { username: trimmedUsername } },
       });
       if (err) throw err;
+      if (authData?.user) {
+        await supabase.from('profiles').upsert(
+          { id: authData.user.id, username: trimmedUsername },
+          { onConflict: 'id' }
+        );
+      }
       setError(null);
       router.replace('/areas');
     } catch (err: unknown) {

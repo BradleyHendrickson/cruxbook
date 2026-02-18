@@ -96,6 +96,13 @@ function RootLayoutNav() {
         }}
       />
       <Stack.Screen
+        name="edit-boulder"
+        options={{
+          title: 'Edit Boulder',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
         name="boulder/[id]"
         options={{
           title: 'Boulder',

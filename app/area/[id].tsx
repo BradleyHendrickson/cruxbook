@@ -8,9 +8,11 @@ import {
   Text,
   View,
   Modal,
+  Platform,
 } from 'react-native';
-import MapView, { Marker, Callout } from 'react-native-maps';
+import * as Linking from 'expo-linking';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import AreaMapView from '@/components/AreaMapView';
 import MapLocationPicker from '@/components/MapLocationPicker';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -166,7 +168,10 @@ export default function AreaDetailScreen() {
       >
         <View style={styles.menuContainer}>
           <Pressable
-            style={[styles.menuItem, !user && styles.menuItemLast]}
+            style={[
+              styles.menuItem,
+              !(areaLat != null && areaLng != null) && !user && styles.menuItemLast,
+            ]}
             onPress={() => {
               setMenuVisible(false);
               setViewMode((m) => (m === 'list' ? 'map' : 'list'));
@@ -177,6 +182,24 @@ export default function AreaDetailScreen() {
               {viewMode === 'list' ? 'View Area Map' : 'View List'}
             </Text>
           </Pressable>
+          {areaLat != null && areaLng != null && (
+            <Pressable
+              style={[styles.menuItem, !user && styles.menuItemLast]}
+              onPress={() => {
+                setMenuVisible(false);
+                const url =
+                  Platform.OS === 'ios'
+                    ? `maps://?daddr=${areaLat},${areaLng}`
+                    : Platform.OS === 'android'
+                      ? `geo:${areaLat},${areaLng}`
+                      : `https://www.google.com/maps/dir/?api=1&destination=${areaLat},${areaLng}`;
+                Linking.openURL(url);
+              }}
+            >
+              <FontAwesome name="location-arrow" size={16} color={Colors.dark.tint} />
+              <Text style={styles.menuItemText}>Get directions</Text>
+            </Pressable>
+          )}
           {user && (
             <>
               <Pressable
@@ -262,57 +285,21 @@ export default function AreaDetailScreen() {
           initialLat={areaLat}
           initialLng={areaLng}
         />
-        <MapView style={styles.map} initialRegion={region}>
-          {sectorsWithLocation.map((s) => (
-            <Marker
-              key={`sector-${s.id}`}
-              coordinate={{ latitude: s.lat!, longitude: s.lng! }}
-              title={s.name}
-              description={`${s.boulder_count} boulder${s.boulder_count !== 1 ? 's' : ''}`}
-              pinColor={Colors.dark.tint}
-              onCalloutPress={() =>
-                router.push({
-                  pathname: `/sector/${s.id}`,
-                  params: { areaId: id, sectorName: s.name, areaName },
-                })
-              }
-            >
-              <Callout tooltip={false}>
-                <View style={styles.callout}>
-                  <ThemedText style={styles.calloutTitle}>{s.name}</ThemedText>
-                  <ThemedText style={styles.calloutSub}>
-                    {s.boulder_count} boulder{s.boulder_count !== 1 ? 's' : ''}
-                  </ThemedText>
-                  <ThemedText style={styles.calloutHint}>Tap to view</ThemedText>
-                </View>
-              </Callout>
-            </Marker>
-          ))}
-          {boulders.map((b) => (
-            <Marker
-              key={`boulder-${b.id}`}
-              coordinate={{ latitude: b.lat, longitude: b.lng }}
-              title={b.name}
-              description={gradeToLabel(b.avg_grade)}
-              onCalloutPress={() =>
-                router.push({
-                  pathname: `/boulder/${b.id}`,
-                  params: { areaId: id, areaName },
-                })
-              }
-            >
-              <Callout tooltip={false}>
-                <View style={styles.callout}>
-                  <ThemedText style={styles.calloutTitle}>{b.name}</ThemedText>
-                  <ThemedText style={styles.calloutGrade}>
-                    {gradeToLabel(b.avg_grade)}
-                  </ThemedText>
-                  <ThemedText style={styles.calloutHint}>Tap to view</ThemedText>
-                </View>
-              </Callout>
-            </Marker>
-          ))}
-        </MapView>
+        <View style={styles.map}>
+          <AreaMapView
+            sectors={sectorsWithLocation.map((s) => ({
+              id: s.id,
+              name: s.name,
+              boulder_count: s.boulder_count,
+              lat: s.lat!,
+              lng: s.lng!,
+            }))}
+            boulders={boulders}
+            region={region}
+            areaId={id ?? ''}
+            areaName={areaName}
+          />
+        </View>
       </View>
       </>
     );

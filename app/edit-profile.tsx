@@ -138,6 +138,10 @@ export default function EditProfileScreen() {
         data: { username: trimmed },
       });
       if (err) throw err;
+      await supabase.from('profiles').upsert(
+        { id: user.id, username: trimmed },
+        { onConflict: 'id' }
+      );
       setInitialUsername(trimmed);
       router.back();
     } catch (e: unknown) {
