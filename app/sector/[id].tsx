@@ -17,13 +17,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
-import { gradeToLabel } from '@/constants/Grades';
 
 type Boulder = {
   id: string;
   name: string;
   description: string | null;
-  avg_grade: number | null;
+  problem_count: number;
   lat: number | null;
   lng: number | null;
 };
@@ -57,6 +56,7 @@ export default function SectorDetailScreen() {
   );
   const [sectorLat, setSectorLat] = useState<number | null>(null);
   const [sectorLng, setSectorLng] = useState<number | null>(null);
+  const [sectorPolygonCoords, setSectorPolygonCoords] = useState<{ lat: number; lng: number }[] | null>(null);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const hasLoadedOnce = useRef(false);
@@ -149,18 +149,19 @@ export default function SectorDetailScreen() {
     if (!id) return;
     const { data } = await supabase
       .from('boulders')
-      .select('id, name, description, avg_grade, lat, lng')
+      .select('id, name, description, problem_count, lat, lng')
       .eq('sector_id', id)
       .order('name');
     setBoulders(data ?? []);
 
     const { data: sectorData } = await supabase
       .from('sectors')
-      .select('lat, lng')
+      .select('lat, lng, polygon_coords')
       .eq('id', id)
       .single();
     setSectorLat(sectorData?.lat ?? null);
     setSectorLng(sectorData?.lng ?? null);
+    setSectorPolygonCoords((sectorData?.polygon_coords as { lat: number; lng: number }[]) ?? null);
   };
 
   useEffect(() => {
@@ -258,7 +259,7 @@ export default function SectorDetailScreen() {
             boulders={bouldersWithLocation.map((b) => ({
               id: b.id,
               name: b.name,
-              avg_grade: b.avg_grade,
+              problem_count: b.problem_count ?? 0,
               lat: b.lat!,
               lng: b.lng!,
             }))}
@@ -267,6 +268,7 @@ export default function SectorDetailScreen() {
             areaId={areaId ?? ''}
             sectorName={sectorName ?? ''}
             areaName={areaName ?? ''}
+            sectorPolygonCoords={sectorPolygonCoords}
           />
         </View>
         </View>
@@ -304,8 +306,9 @@ export default function SectorDetailScreen() {
             style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
             onPress={() =>
               router.push({
-                pathname: `/boulder/${item.id}`,
+                pathname: '/boulder/[id]',
                 params: {
+                  id: item.id,
                   sectorId: id,
                   areaId: areaId ?? '',
                   sectorName: sectorName ?? '',
@@ -316,7 +319,9 @@ export default function SectorDetailScreen() {
           >
             <View style={styles.cardHeader}>
               <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.grade}>{gradeToLabel(item.avg_grade)}</Text>
+              <Text style={styles.grade}>
+                {item.problem_count} problem{item.problem_count !== 1 ? 's' : ''}
+              </Text>
             </View>
             {item.description ? (
               <Text style={styles.description} numberOfLines={2}>

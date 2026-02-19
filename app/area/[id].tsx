@@ -9,11 +9,14 @@ import {
   View,
   Modal,
   Platform,
+  InteractionManager,
 } from 'react-native';
 import * as Linking from 'expo-linking';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import AreaMapView from '@/components/AreaMapView';
+import EditableMapView from '@/components/EditableMapView';
 import MapLocationPicker from '@/components/MapLocationPicker';
+import { regionFromPolygon, sanitizePolygonCoords } from '@/lib/mapUtils';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Text as ThemedText } from '@/components/Themed';
@@ -22,6 +25,8 @@ import { gradeToLabel } from '@/constants/Grades';
 import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
 
+type PolygonCoords = { lat: number; lng: number }[];
+
 type Sector = {
   id: string;
   name: string;
@@ -29,12 +34,13 @@ type Sector = {
   boulder_count: number;
   lat: number | null;
   lng: number | null;
+  polygon_coords: PolygonCoords | null;
 };
 
 type BoulderMarker = {
   id: string;
   name: string;
-  avg_grade: number | null;
+  problem_count: number;
   lat: number;
   lng: number;
 };
@@ -48,11 +54,12 @@ export default function AreaDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const openMap = typeof params.openMap === 'string' ? params.openMap : params.openMap?.[0];
-  const [viewMode, setViewMode] = useState<'list' | 'map'>(
+  const [viewMode, setViewMode] = useState<'list' | 'map' | 'mapEdit'>(
     openMap === '1' ? 'map' : 'list'
   );
   const [areaLat, setAreaLat] = useState<number | null>(null);
   const [areaLng, setAreaLng] = useState<number | null>(null);
+  const [areaPolygonCoords, setAreaPolygonCoords] = useState<PolygonCoords | null>(null);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const hasLoadedOnce = useRef(false);
@@ -85,24 +92,30 @@ export default function AreaDetailScreen() {
     if (!id) return;
     const { data: areaData } = await supabase
       .from('areas')
-      .select('name, lat, lng')
+      .select('name, lat, lng, polygon_coords')
       .eq('id', id)
       .single();
     setAreaName(areaData?.name ?? 'Area');
     setAreaLat(areaData?.lat ?? null);
     setAreaLng(areaData?.lng ?? null);
+    setAreaPolygonCoords((areaData?.polygon_coords as PolygonCoords) ?? null);
 
     const { data: sectorsData } = await supabase
       .from('sectors')
-      .select('id, name, description, boulder_count, lat, lng')
+      .select('id, name, description, boulder_count, lat, lng, polygon_coords')
       .eq('area_id', id)
       .order('sort_order')
       .order('name');
-    setSectors(sectorsData ?? []);
+    setSectors(
+      (sectorsData ?? []).map((s) => ({
+        ...s,
+        polygon_coords: (s.polygon_coords as PolygonCoords) ?? null,
+      }))
+    );
 
     const { data: bouldersData } = await supabase
       .from('boulders')
-      .select('id, name, avg_grade, lat, lng')
+      .select('id, name, problem_count, lat, lng')
       .eq('area_id', id)
       .not('lat', 'is', null)
       .not('lng', 'is', null);
@@ -110,7 +123,7 @@ export default function AreaDetailScreen() {
       (bouldersData ?? []).map((b) => ({
         id: b.id,
         name: b.name,
-        avg_grade: b.avg_grade,
+        problem_count: b.problem_count ?? 0,
         lat: b.lat!,
         lng: b.lng!,
       }))
@@ -170,18 +183,34 @@ export default function AreaDetailScreen() {
           <Pressable
             style={[
               styles.menuItem,
-              !(areaLat != null && areaLng != null) && !user && styles.menuItemLast,
+              !(areaLat != null && areaLng != null) && !user && viewMode !== 'mapEdit' && styles.menuItemLast,
             ]}
             onPress={() => {
               setMenuVisible(false);
-              setViewMode((m) => (m === 'list' ? 'map' : 'list'));
+              if (viewMode === 'mapEdit') {
+                setViewMode('map');
+              } else {
+                setViewMode((m) => (m === 'list' ? 'map' : 'list'));
+              }
             }}
           >
             <FontAwesome name="map" size={16} color={Colors.dark.tint} />
             <Text style={styles.menuItemText}>
-              {viewMode === 'list' ? 'View Area Map' : 'View List'}
+              {viewMode === 'mapEdit' ? 'Done editing' : viewMode === 'list' ? 'View Area Map' : 'View List'}
             </Text>
           </Pressable>
+          {user && viewMode === 'map' && (
+            <Pressable
+              style={[styles.menuItem, !(areaLat != null && areaLng != null) && styles.menuItemLast]}
+              onPress={() => {
+                setMenuVisible(false);
+                setViewMode('mapEdit');
+              }}
+            >
+              <FontAwesome name="pencil" size={16} color={Colors.dark.tint} />
+              <Text style={styles.menuItemText}>Edit map</Text>
+            </Pressable>
+          )}
           {areaLat != null && areaLng != null && (
             <Pressable
               style={[styles.menuItem, !user && styles.menuItemLast]}
@@ -232,13 +261,119 @@ export default function AreaDetailScreen() {
     </Modal>
   );
 
+  if (viewMode === 'mapEdit' && user) {
+    const editRegion =
+      areaPolygonCoords && areaPolygonCoords.length >= 3
+        ? regionFromPolygon(areaPolygonCoords)
+        : mapItems.length > 0
+          ? {
+              latitude:
+                mapItems.reduce(
+                  (sum, i) => sum + (('boulder_count' in i ? (i as Sector).lat! : (i as BoulderMarker).lat)),
+                  0
+                ) / mapItems.length,
+              longitude:
+                mapItems.reduce(
+                  (sum, i) => sum + (('boulder_count' in i ? (i as Sector).lng! : (i as BoulderMarker).lng)),
+                  0
+                ) / mapItems.length,
+              latitudeDelta: 0.02,
+              longitudeDelta: 0.02,
+            }
+          : {
+              latitude: areaLat ?? 37.5,
+              longitude: areaLng ?? -122,
+              latitudeDelta: 0.02,
+              longitudeDelta: 0.02,
+            };
+
+    const editPolygons: { id: string; coords: PolygonCoords; name?: string }[] = [];
+    if (areaPolygonCoords && areaPolygonCoords.length >= 3) {
+      const sanitized = sanitizePolygonCoords(areaPolygonCoords);
+      if (sanitized.length >= 3) {
+        editPolygons.push({ id: 'area', coords: sanitized, name: areaName });
+      }
+    }
+    sectors.forEach((s) => {
+      if (s.polygon_coords && s.polygon_coords.length >= 3) {
+        editPolygons.push({ id: s.id, coords: s.polygon_coords, name: s.name });
+      }
+    });
+
+    return (
+      <>
+        {menuVisible && <AreaMenu />}
+        <View style={styles.container}>
+          <EditableMapView
+            polygons={editPolygons}
+            sectors={sectors.map((s) => ({
+              id: s.id,
+              name: s.name,
+              polygon_coords: s.polygon_coords,
+              lat: s.lat,
+              lng: s.lng,
+            }))}
+            boulders={boulders}
+            region={editRegion}
+            areaId={id ?? ''}
+            areaName={areaName}
+            onPolygonComplete={async (coords) => {
+              if (!id) return false;
+              const sanitized = sanitizePolygonCoords(coords);
+              if (sanitized.length < 3) return false;
+              const { error } = await supabase
+                .from('areas')
+                .update({ polygon_coords: sanitized })
+                .eq('id', id);
+              if (!error) {
+                InteractionManager.runAfterInteractions(() => {
+                  setAreaPolygonCoords(sanitized);
+                });
+                return true;
+              }
+              console.error('Polygon save failed:', error.message, error.code);
+              return false;
+            }}
+            onBoulderPlace={(lat, lng, sectorId) => {
+              const sectorToUse = sectorId ?? sectors[0]?.id;
+              if (!sectorToUse) return;
+              const sector = sectors.find((s) => s.id === sectorToUse);
+              router.push({
+                pathname: '/add-boulder',
+                params: {
+                  sectorId: sectorToUse,
+                  areaId: id ?? '',
+                  sectorName: sector?.name ?? '',
+                  areaName,
+                  lat: lat.toString(),
+                  lng: lng.toString(),
+                },
+              });
+            }}
+            editable={true}
+            entityType="area"
+          />
+        </View>
+      </>
+    );
+  }
+
   if (viewMode === 'map') {
-    if (mapItems.length === 0) {
+    if (mapItems.length === 0 && !areaPolygonCoords) {
       return (
         <>
-          <AreaMenu />
+          {menuVisible && <AreaMenu />}
           <View style={styles.container}>
           <View style={styles.emptyMap}>
+            {user && (
+              <Pressable
+                style={styles.editMapButton}
+                onPress={() => setViewMode('mapEdit')}
+              >
+                <FontAwesome name="pencil" size={16} color="#fff" />
+                <Text style={styles.editMapButtonText}>Edit map to add boundaries</Text>
+              </Pressable>
+            )}
             <View style={{ opacity: 0.4 }}>
               <FontAwesome name="map" size={48} color={Colors.dark.text} />
             </View>
@@ -251,21 +386,33 @@ export default function AreaDetailScreen() {
         </>
       );
     }
-    const lats = mapItems.map((i) =>
-      'boulder_count' in i ? (i as Sector).lat! : (i as BoulderMarker).lat
-    );
-    const lngs = mapItems.map((i) =>
-      'boulder_count' in i ? (i as Sector).lng! : (i as BoulderMarker).lng
-    );
-    const region = {
-      latitude: lats.reduce((a, b) => a + b, 0) / lats.length,
-      longitude: lngs.reduce((a, b) => a + b, 0) / lngs.length,
-      latitudeDelta: 0.02,
-      longitudeDelta: 0.02,
-    };
+    const region =
+      areaPolygonCoords && areaPolygonCoords.length >= 3
+        ? regionFromPolygon(areaPolygonCoords)
+        : mapItems.length > 0
+          ? (() => {
+              const lats = mapItems.map((i) =>
+                'boulder_count' in i ? (i as Sector).lat! : (i as BoulderMarker).lat
+              );
+              const lngs = mapItems.map((i) =>
+                'boulder_count' in i ? (i as Sector).lng! : (i as BoulderMarker).lng
+              );
+              return {
+                latitude: lats.reduce((a, b) => a + b, 0) / lats.length,
+                longitude: lngs.reduce((a, b) => a + b, 0) / lngs.length,
+                latitudeDelta: 0.02,
+                longitudeDelta: 0.02,
+              };
+            })()
+          : {
+              latitude: areaLat ?? 37.5,
+              longitude: areaLng ?? -122,
+              latitudeDelta: 0.02,
+              longitudeDelta: 0.02,
+            };
     return (
       <>
-        <AreaMenu />
+        {menuVisible && <AreaMenu />}
         <View style={styles.container}>
         <MapLocationPicker
           visible={locationPickerVisible}
@@ -293,11 +440,13 @@ export default function AreaDetailScreen() {
               boulder_count: s.boulder_count,
               lat: s.lat!,
               lng: s.lng!,
+              polygon_coords: s.polygon_coords,
             }))}
             boulders={boulders}
             region={region}
             areaId={id ?? ''}
             areaName={areaName}
+            areaPolygonCoords={areaPolygonCoords}
           />
         </View>
       </View>
@@ -307,7 +456,7 @@ export default function AreaDetailScreen() {
 
   return (
     <>
-      <AreaMenu />
+      {menuVisible && <AreaMenu />}
       <View style={styles.container}>
       <MapLocationPicker
         visible={locationPickerVisible}
@@ -335,8 +484,9 @@ export default function AreaDetailScreen() {
             style={styles.card}
             onPress={() =>
               router.push({
-                pathname: `/sector/${item.id}`,
+                pathname: '/sector/[id]',
                 params: {
+                  id: item.id,
                   areaId: id,
                   sectorName: item.name,
                   areaName,
@@ -478,6 +628,21 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     opacity: 0.7,
     textAlign: 'center',
+  },
+  editMapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.dark.tint,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    marginTop: 24,
+  },
+  editMapButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   callout: {
     minWidth: 120,

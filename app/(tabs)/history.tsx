@@ -27,13 +27,13 @@ type ClimbLog = {
   rating: number | null;
   notes: string | null;
   logged_at: string;
-  boulder_id: string;
-  boulders: {
+  problem_id: string;
+  problems: {
     name: string;
-    area_id: string;
-    sector_id: string | null;
-    areas: { name: string } | null;
-    sectors: { name: string } | null;
+    boulders: {
+      areas: { name: string } | null;
+      sectors: { name: string } | null;
+    } | null;
   } | null;
 };
 
@@ -58,13 +58,13 @@ export default function HistoryScreen() {
         rating,
         notes,
         logged_at,
-        boulder_id,
-        boulders(
+        problem_id,
+        problems(
           name,
-          area_id,
-          sector_id,
-          areas(name),
-          sectors(name)
+          boulders(
+            areas(name),
+            sectors(name)
+          )
         )
       `)
       .eq('user_id', user.id)
@@ -75,7 +75,7 @@ export default function HistoryScreen() {
     }
 
     const { data } = await query;
-    setLogs((data ?? []) as ClimbLog[]);
+    setLogs((data ?? []) as unknown as ClimbLog[]);
     setLoading(false);
   }, [user?.id, outcomeFilter]);
 
@@ -137,7 +137,7 @@ export default function HistoryScreen() {
             No climbs logged yet
           </ThemedText>
           <ThemedText style={styles.emptySubtext}>
-            Log your sends from any boulder page
+            Log your sends from any problem page
           </ThemedText>
         </View>
       ) : (
@@ -149,7 +149,8 @@ export default function HistoryScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
           renderItem={({ item }) => {
-            const b = item.boulders;
+            const p = item.problems;
+            const b = p?.boulders;
             const areaName = b?.areas?.name ?? '';
             const sectorName = b?.sectors?.name ?? '';
             const breadcrumb = [areaName, sectorName].filter(Boolean).join(' › ');
@@ -159,8 +160,9 @@ export default function HistoryScreen() {
                 style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
                 onPress={() =>
                   router.push({
-                    pathname: `/boulder/${item.boulder_id}`,
+                    pathname: '/problem/[id]',
                     params: {
+                      id: item.problem_id,
                       sectorName: sectorName || '',
                       areaName: areaName || '',
                     },
@@ -168,7 +170,7 @@ export default function HistoryScreen() {
                 }
               >
                 <View style={styles.cardHeader}>
-                  <ThemedText style={styles.boulderName}>{b?.name ?? 'Unknown'}</ThemedText>
+                  <ThemedText style={styles.boulderName}>{p?.name ?? 'Unknown'}</ThemedText>
                   <View style={styles.outcomeBadge}>
                     <Text style={styles.outcomeText}>{outcomeLabel}</Text>
                   </View>

@@ -96,6 +96,13 @@ function RootLayoutNav() {
         }}
       />
       <Stack.Screen
+        name="add-problem"
+        options={{
+          title: 'Add Problem',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
         name="edit-boulder"
         options={{
           title: 'Edit Boulder',
@@ -103,9 +110,23 @@ function RootLayoutNav() {
         }}
       />
       <Stack.Screen
+        name="edit-problem"
+        options={{
+          title: 'Edit Problem',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
         name="boulder/[id]"
         options={{
           title: 'Boulder',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <Stack.Screen
+        name="problem/[id]"
+        options={{
+          title: 'Problem',
           headerBackTitle: 'Back',
         }}
       />

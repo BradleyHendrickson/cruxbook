@@ -13,7 +13,7 @@ type Sector = {
 type BoulderMarker = {
   id: string;
   name: string;
-  avg_grade: number | null;
+  problem_count: number;
   lat: number;
   lng: number;
 };

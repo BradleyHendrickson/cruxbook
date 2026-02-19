@@ -99,7 +99,7 @@ export default function AreasScreen() {
           return (
             <Pressable
               style={styles.card}
-              onPress={() => router.push(`/area/${item.id}`)}
+              onPress={() => router.push({ pathname: '/area/[id]', params: { id: item.id } })}
             >
               <ThemedText style={styles.name}>{item.name}</ThemedText>
               {item.description ? (

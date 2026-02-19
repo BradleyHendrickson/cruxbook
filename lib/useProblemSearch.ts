@@ -21,7 +21,7 @@ type SearchSector = {
   lng?: number | null;
 };
 
-type SearchBoulder = {
+type SearchProblem = {
   id: string;
   name: string;
   avg_grade: number | null;
@@ -33,12 +33,13 @@ type SearchBoulder = {
   area_id: string;
   sector_name: string | null;
   area_name: string;
+  boulder_name: string | null;
 };
 
 export type SearchResults = {
   areas: SearchArea[];
   sectors: SearchSector[];
-  boulders: SearchBoulder[];
+  problems: SearchProblem[];
 };
 
 function haversineDistance(
@@ -65,7 +66,7 @@ export type SortOption = 'popularity' | 'proximity';
 export type SearchTypes = {
   areas: boolean;
   sectors: boolean;
-  boulders: boolean;
+  problems: boolean;
 };
 
 export type SearchParams = {
@@ -79,11 +80,50 @@ export type SearchParams = {
   searchTypes: SearchTypes;
 };
 
-export function useBoulderSearch(params: SearchParams) {
+function mapProblemRow(p: {
+  id: string;
+  name: string;
+  avg_grade: number | null;
+  vote_count: number;
+  style: string | null;
+  boulders: {
+    lat: number | null;
+    lng: number | null;
+    sector_id: string | null;
+    area_id: string;
+    name: string;
+    sectors: { name: string } | { name: string }[] | null;
+    areas: { name: string } | { name: string }[] | null;
+  } | null;
+}): SearchProblem {
+  const b = p.boulders;
+  const sectorName = b?.sectors
+    ? (Array.isArray(b.sectors) ? b.sectors[0]?.name : b.sectors.name)
+    : null;
+  const areaName = b?.areas
+    ? (Array.isArray(b.areas) ? b.areas[0]?.name : b.areas.name) ?? ''
+    : '';
+  return {
+    id: p.id,
+    name: p.name,
+    avg_grade: p.avg_grade,
+    vote_count: p.vote_count ?? 0,
+    style: p.style,
+    lat: b?.lat ?? null,
+    lng: b?.lng ?? null,
+    sector_id: b?.sector_id ?? null,
+    area_id: b?.area_id ?? '',
+    sector_name: sectorName ?? null,
+    area_name: areaName,
+    boulder_name: b?.name ?? null,
+  };
+}
+
+export function useProblemSearch(params: SearchParams) {
   const [results, setResults] = useState<SearchResults>({
     areas: [],
     sectors: [],
-    boulders: [],
+    problems: [],
   });
   const [loading, setLoading] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -121,12 +161,14 @@ export function useBoulderSearch(params: SearchParams) {
 
       let areas: SearchArea[] = [];
       let sectors: SearchSector[] = [];
-      let boulders: SearchBoulder[] = [];
+      let problems: SearchProblem[] = [];
 
       if (hasQuery) {
-        const { areas: searchAreas, sectors: searchSectors, boulders: searchBoulders } = params.searchTypes;
+        const { areas: searchAreas, sectors: searchSectors, problems: searchProblems } = params.searchTypes;
 
-        const [areasRes, sectorsRes, bouldersRes] = await Promise.all([
+        const problemsSelect = 'id, name, avg_grade, vote_count, style, boulders(lat, lng, sector_id, area_id, name, sectors(name), areas(name))';
+
+        const [areasRes, sectorsRes, problemsRes] = await Promise.all([
           searchAreas
             ? supabase
                 .from('areas')
@@ -144,10 +186,10 @@ export function useBoulderSearch(params: SearchParams) {
                 .order('name')
                 .limit(20)
             : { data: [] },
-          searchBoulders
+          searchProblems
             ? supabase
-                .from('boulders')
-                .select('id, name, avg_grade, vote_count, style, lat, lng, sector_id, area_id, sectors(name), areas(name)')
+                .from('problems')
+                .select(problemsSelect)
                 .ilike('name', `%${q}%`)
                 .limit(100)
             : { data: [] },
@@ -160,34 +202,21 @@ export function useBoulderSearch(params: SearchParams) {
           boulder_count: a.boulder_count,
         }));
 
-        sectors = (sectorsRes.data ?? []).map((s: { id: string; name: string; area_id: string; areas: { name: string } | null }) => ({
-          id: s.id,
-          name: s.name,
-          area_id: s.area_id,
-          area_name: s.areas?.name ?? '',
-        }));
+        sectors = (sectorsRes.data ?? []).map((s: unknown) => {
+          const x = s as { id: string; name: string; area_id: string; areas: { name: string } | { name: string }[] | null };
+          const areaName = x.areas
+            ? (Array.isArray(x.areas) ? x.areas[0]?.name : x.areas.name) ?? ''
+            : '';
+          return { id: x.id, name: x.name, area_id: x.area_id, area_name: areaName };
+        });
 
-        boulders = (bouldersRes.data ?? []).map((b: {
-          id: string; name: string; avg_grade: number | null; vote_count: number; style: string | null;
-          lat: number | null; lng: number | null; sector_id: string | null; area_id: string;
-          sectors: { name: string } | null; areas: { name: string } | null;
-        }) => ({
-          id: b.id,
-          name: b.name,
-          avg_grade: b.avg_grade,
-          vote_count: b.vote_count ?? 0,
-          style: b.style,
-          lat: b.lat,
-          lng: b.lng,
-          sector_id: b.sector_id,
-          area_id: b.area_id,
-          sector_name: b.sectors?.name ?? null,
-          area_name: b.areas?.name ?? '',
-        }));
+        problems = (problemsRes.data ?? []).map((p: unknown) => mapProblemRow(p as Parameters<typeof mapProblemRow>[0]));
       } else if (hasLocation) {
-        const { areas: searchAreas, sectors: searchSectors, boulders: searchBoulders } = params.searchTypes;
+        const { areas: searchAreas, sectors: searchSectors, problems: searchProblems } = params.searchTypes;
 
-        const [areasRes, sectorsRes, bouldersRes] = await Promise.all([
+        const problemsSelect = 'id, name, avg_grade, vote_count, style, boulders!inner(lat, lng, sector_id, area_id, name, sectors(name), areas(name))';
+
+        const [areasRes, sectorsRes, problemsRes] = await Promise.all([
           searchAreas
             ? supabase
                 .from('areas')
@@ -205,12 +234,10 @@ export function useBoulderSearch(params: SearchParams) {
                 .not('lng', 'is', null)
                 .limit(20)
             : { data: [] },
-          searchBoulders
+          searchProblems
             ? supabase
-                .from('boulders')
-                .select('id, name, avg_grade, vote_count, style, lat, lng, sector_id, area_id, sectors(name), areas(name)')
-                .not('lat', 'is', null)
-                .not('lng', 'is', null)
+                .from('problems')
+                .select(problemsSelect)
                 .limit(100)
             : { data: [] },
         ]);
@@ -224,47 +251,30 @@ export function useBoulderSearch(params: SearchParams) {
           lng: a.lng,
         }));
 
-        sectors = (sectorsRes.data ?? []).map((s: { id: string; name: string; area_id: string; areas: { name: string } | null; lat: number; lng: number }) => ({
-          id: s.id,
-          name: s.name,
-          area_id: s.area_id,
-          area_name: s.areas?.name ?? '',
-          lat: s.lat,
-          lng: s.lng,
-        }));
+        sectors = (sectorsRes.data ?? []).map((s: unknown) => {
+          const x = s as { id: string; name: string; area_id: string; areas: { name: string } | { name: string }[] | null; lat: number; lng: number };
+          const areaName = x.areas
+            ? (Array.isArray(x.areas) ? x.areas[0]?.name : x.areas.name) ?? ''
+            : '';
+          return { id: x.id, name: x.name, area_id: x.area_id, area_name: areaName, lat: x.lat, lng: x.lng };
+        });
 
-        boulders = (bouldersRes.data ?? []).map((b: {
-          id: string; name: string; avg_grade: number | null; vote_count: number; style: string | null;
-          lat: number; lng: number; sector_id: string | null; area_id: string;
-          sectors: { name: string } | null; areas: { name: string } | null;
-        }) => ({
-          id: b.id,
-          name: b.name,
-          avg_grade: b.avg_grade,
-          vote_count: b.vote_count ?? 0,
-          style: b.style,
-          lat: b.lat,
-          lng: b.lng,
-          sector_id: b.sector_id,
-          area_id: b.area_id,
-          sector_name: b.sectors?.name ?? null,
-          area_name: b.areas?.name ?? '',
-        }));
+        problems = (problemsRes.data ?? []).map((p: unknown) => mapProblemRow(p as Parameters<typeof mapProblemRow>[0]));
       }
 
       if (params.minGrade != null) {
-        boulders = boulders.filter(
-          (b) => b.avg_grade != null && b.avg_grade >= params.minGrade!
+        problems = problems.filter(
+          (p) => p.avg_grade != null && p.avg_grade >= params.minGrade!
         );
       }
       if (params.maxGrade != null) {
-        boulders = boulders.filter(
-          (b) => b.avg_grade != null && b.avg_grade <= params.maxGrade!
+        problems = problems.filter(
+          (p) => p.avg_grade != null && p.avg_grade <= params.maxGrade!
         );
       }
       if (params.styles.length > 0) {
-        boulders = boulders.filter(
-          (b) => b.style != null && params.styles.includes(b.style as StyleValue)
+        problems = problems.filter(
+          (p) => p.style != null && params.styles.includes(p.style as StyleValue)
         );
       }
 
@@ -283,19 +293,19 @@ export function useBoulderSearch(params: SearchParams) {
             .filter((s) => s.lat != null && s.lng != null)
             .sort(sortByProximity);
         }
-        if (boulders.length > 0) {
-          boulders = boulders
-            .filter((b) => b.lat != null && b.lng != null)
+        if (problems.length > 0) {
+          problems = problems
+            .filter((p) => p.lat != null && p.lng != null)
             .sort(sortByProximity);
         }
       } else {
-        boulders.sort((a, b) => (b.vote_count ?? 0) - (a.vote_count ?? 0));
+        problems.sort((a, b) => (b.vote_count ?? 0) - (a.vote_count ?? 0));
       }
 
-      setResults({ areas, sectors, boulders });
+      setResults({ areas, sectors, problems });
     } catch (err) {
       console.error('Search error:', err);
-      setResults({ areas: [], sectors: [], boulders: [] });
+      setResults({ areas: [], sectors: [], problems: [] });
     } finally {
       setLoading(false);
     }
@@ -316,7 +326,7 @@ export function useBoulderSearch(params: SearchParams) {
     if (hasQuery || hasLocation) {
       search();
     } else {
-      setResults({ areas: [], sectors: [], boulders: [] });
+      setResults({ areas: [], sectors: [], problems: [] });
     }
   }, [params.query, params.sort, params.userLat, params.userLng, params.searchTypes, search]);
 

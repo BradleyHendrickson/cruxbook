@@ -13,11 +13,11 @@ import {
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import { Text as ThemedText, View } from '@/components/Themed';
-import { useBoulderSearch } from '@/lib/useBoulderSearch';
+import { useProblemSearch } from '@/lib/useProblemSearch';
 import { GRADES, gradeToLabel } from '@/constants/Grades';
 import { STYLES } from '@/constants/Styles';
 import Colors from '@/constants/Colors';
-import type { SortOption, SearchTypes } from '@/lib/useBoulderSearch';
+import type { SortOption, SearchTypes } from '@/lib/useProblemSearch';
 import type { StyleValue } from '@/constants/Styles';
 
 const GRADE_NONE = -1;
@@ -34,10 +34,10 @@ export default function SearchScreen() {
   const [searchTypes, setSearchTypes] = useState<SearchTypes>({
     areas: true,
     sectors: true,
-    boulders: true,
+    problems: true,
   });
 
-  const { results, loading, fetchLocation, locationError } = useBoulderSearch({
+  const { results, loading, fetchLocation, locationError } = useProblemSearch({
     query,
     minGrade: minGrade === GRADE_NONE ? null : minGrade,
     maxGrade: maxGrade === GRADE_NONE ? null : maxGrade,
@@ -71,7 +71,7 @@ export default function SearchScreen() {
     setSort('popularity');
     setUserLat(null);
     setUserLng(null);
-    setSearchTypes({ areas: true, sectors: true, boulders: true });
+    setSearchTypes({ areas: true, sectors: true, problems: true });
     setFilterModalVisible(false);
   }, []);
 
@@ -79,7 +79,7 @@ export default function SearchScreen() {
     setSearchTypes((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const hasSearchTypeFilter = !searchTypes.areas || !searchTypes.sectors || !searchTypes.boulders;
+  const hasSearchTypeFilter = !searchTypes.areas || !searchTypes.sectors || !searchTypes.problems;
 
   const hasActiveFilters =
     minGrade !== GRADE_NONE ||
@@ -88,22 +88,22 @@ export default function SearchScreen() {
     sort === 'proximity' ||
     hasSearchTypeFilter;
 
-  const listData: { type: 'area' | 'sector' | 'boulder'; item: unknown }[] = [
+  const listData: { type: 'area' | 'sector' | 'problem'; item: unknown }[] = [
     ...results.areas.map((a) => ({ type: 'area' as const, item: a })),
     ...results.sectors.map((s) => ({ type: 'sector' as const, item: s })),
-    ...results.boulders.map((b) => ({ type: 'boulder' as const, item: b })),
+    ...results.problems.map((p) => ({ type: 'problem' as const, item: p })),
   ];
 
   const renderItem = ({
     item: { type, item },
   }: {
-    item: { type: 'area' | 'sector' | 'boulder'; item: unknown };
+    item: { type: 'area' | 'sector' | 'problem'; item: unknown };
   }) => {
     const i = item as { id: string; name: string; area_name?: string; sector_name?: string; avg_grade?: number | null; vote_count?: number };
     const subtitle =
       type === 'sector'
         ? i.area_name
-        : type === 'boulder'
+        : type === 'problem'
           ? [i.area_name, i.sector_name].filter(Boolean).join(' › ') +
             (i.avg_grade != null ? ` · ${gradeToLabel(i.avg_grade)}` : '')
           : undefined;
@@ -113,20 +113,21 @@ export default function SearchScreen() {
         style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
         onPress={() => {
           if (type === 'area') {
-            router.push(`/area/${i.id}`);
+            router.push({ pathname: '/area/[id]', params: { id: i.id } });
           } else if (type === 'sector') {
             const s = item as { id: string; area_id: string; area_name: string };
             router.push({
-              pathname: `/sector/${s.id}`,
-              params: { areaId: s.area_id, sectorName: i.name, areaName: s.area_name },
+              pathname: '/sector/[id]',
+              params: { id: s.id, areaId: s.area_id, sectorName: i.name, areaName: s.area_name },
             });
           } else {
-            const b = item as { id: string; sector_id: string | null; area_id: string; sector_name: string | null; area_name: string };
+            const p = item as { id: string; sector_name: string | null; area_name: string };
             router.push({
-              pathname: `/boulder/${b.id}`,
+              pathname: '/problem/[id]',
               params: {
-                sectorName: b.sector_name ?? '',
-                areaName: b.area_name,
+                id: p.id,
+                sectorName: p.sector_name ?? '',
+                areaName: p.area_name,
               },
             });
           }
@@ -146,7 +147,7 @@ export default function SearchScreen() {
         <FontAwesome name="search" size={18} color={Colors.dark.text} style={styles.searchIcon} />
         <TextInput
           style={styles.input}
-          placeholder="Search areas, sectors, boulders..."
+          placeholder="Search areas, sectors, problems..."
           placeholderTextColor="rgba(196, 167, 125, 0.5)"
           value={query}
           onChangeText={setQuery}
@@ -174,11 +175,11 @@ export default function SearchScreen() {
           </ThemedText>
         </Pressable>
         <Pressable
-          style={[styles.searchTypeChip, searchTypes.boulders && styles.searchTypeChipActive]}
-          onPress={() => toggleSearchType('boulders')}
+          style={[styles.searchTypeChip, searchTypes.problems && styles.searchTypeChipActive]}
+          onPress={() => toggleSearchType('problems')}
         >
-          <ThemedText style={[styles.searchTypeText, searchTypes.boulders && styles.searchTypeTextActive]}>
-            Boulders
+          <ThemedText style={[styles.searchTypeText, searchTypes.problems && styles.searchTypeTextActive]}>
+            Problems
           </ThemedText>
         </Pressable>
       </View>
@@ -291,10 +292,10 @@ export default function SearchScreen() {
                   <ThemedText style={styles.chipText}>Sectors</ThemedText>
                 </Pressable>
                 <Pressable
-                  style={[styles.chip, searchTypes.boulders && styles.chipSelected]}
-                  onPress={() => toggleSearchType('boulders')}
+                  style={[styles.chip, searchTypes.problems && styles.chipSelected]}
+                  onPress={() => toggleSearchType('problems')}
                 >
-                  <ThemedText style={styles.chipText}>Boulders</ThemedText>
+                  <ThemedText style={styles.chipText}>Problems</ThemedText>
                 </Pressable>
               </RNView>
 
