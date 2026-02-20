@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
-import { StyleSheet, TextInput, Pressable, ScrollView, Alert } from 'react-native';
+import { StyleSheet, TextInput, Pressable, Alert } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Text, View } from '@/components/Themed';
 import MapLocationPicker from '@/components/MapLocationPicker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { regionFromPolygon } from '@/lib/mapUtils';
+import type { PolygonCoords } from '@/lib/mapUtils';
 
 export default function AddBoulderScreen() {
   const params = useLocalSearchParams<{
@@ -44,8 +47,22 @@ export default function AddBoulderScreen() {
     return !isNaN(n) ? n : null;
   });
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
+  const [areaPolygonCoords, setAreaPolygonCoords] = useState<PolygonCoords | null>(null);
   const { user } = useAuth();
   const navigation = useNavigation();
+
+  useEffect(() => {
+    if (!areaId) return;
+    const fetchArea = async () => {
+      const { data } = await supabase
+        .from('areas')
+        .select('polygon_coords')
+        .eq('id', areaId)
+        .single();
+      setAreaPolygonCoords((data?.polygon_coords as PolygonCoords) ?? null);
+    };
+    fetchArea();
+  }, [areaId]);
 
   useEffect(() => {
     if (sectorName) {
@@ -119,7 +136,14 @@ export default function AddBoulderScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      enableOnAndroid
+      extraScrollHeight={40}
+      enableAutomaticScroll
+    >
       <View style={styles.form}>
         <Text style={styles.label}>Name *</Text>
         <TextInput
@@ -188,14 +212,20 @@ export default function AddBoulderScreen() {
         }}
         initialLat={lat}
         initialLng={lng}
+        centerRegion={
+          areaPolygonCoords && areaPolygonCoords.length >= 3
+            ? regionFromPolygon(areaPolygonCoords)
+            : null
+        }
+        polygonCoords={areaPolygonCoords}
       />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background },
-  content: { padding: 16 },
+  content: { padding: 16, paddingBottom: 40 },
   form: { gap: 8 },
   label: {
     fontSize: 14,

@@ -48,11 +48,13 @@ export function bouldersInPolygon<T extends BoulderWithLocation>(
 /**
  * Compute map region from polygon bounds (min/max lat/lng with padding).
  * Returns safe fallback if coords are invalid (avoids NaN crashes in MapView).
+ * @param zoomScale - Multiply deltas by this (0-1) to zoom in. Default 1.
  */
 export function regionFromPolygon(
   coords: PolygonCoords,
   latitudeDelta = 0.02,
-  longitudeDelta = 0.02
+  longitudeDelta = 0.02,
+  zoomScale = 1
 ): { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number } {
   const valid = coords.filter(
     (c) => typeof c?.lat === 'number' && typeof c?.lng === 'number' && Number.isFinite(c.lat) && Number.isFinite(c.lng)
@@ -71,12 +73,26 @@ export function regionFromPolygon(
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
     return { latitude: 37.5, longitude: -122, latitudeDelta: 0.02, longitudeDelta: 0.02 };
   }
+  const latDelta = Math.max(maxLat - minLat + 0.005, latitudeDelta) * zoomScale;
+  const lngDelta = Math.max(maxLng - minLng + 0.005, longitudeDelta) * zoomScale;
   return {
     latitude: lat,
     longitude: lng,
-    latitudeDelta: Math.max(maxLat - minLat + 0.005, latitudeDelta),
-    longitudeDelta: Math.max(maxLng - minLng + 0.005, longitudeDelta),
+    latitudeDelta: latDelta,
+    longitudeDelta: lngDelta,
   };
+}
+
+/**
+ * Compute map region from points (e.g. boulder locations) to fit all points with padding.
+ */
+export function regionFromPoints(
+  points: LatLng[],
+  latitudeDelta = 0.02,
+  longitudeDelta = 0.02,
+  zoomScale = 1
+): { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number } {
+  return regionFromPolygon(points, latitudeDelta, longitudeDelta, zoomScale);
 }
 
 /**

@@ -57,6 +57,7 @@ export default function ProblemDetailScreen() {
     sectorName?: string;
     areaName?: string;
     boulderName?: string;
+    problemName?: string;
   }>();
   const id = typeof params.id === 'string' ? params.id : params.id?.[0];
   const sectorName =
@@ -75,6 +76,10 @@ export default function ProblemDetailScreen() {
     typeof params.sectorId === 'string' ? params.sectorId : params.sectorId?.[0];
   const areaId =
     typeof params.areaId === 'string' ? params.areaId : params.areaId?.[0];
+  const problemName =
+    typeof params.problemName === 'string'
+      ? params.problemName
+      : params.problemName?.[0];
 
   const [problem, setProblem] = useState<Problem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -181,25 +186,24 @@ export default function ProblemDetailScreen() {
   }, [id, user?.id]);
 
   useEffect(() => {
-    if (problem?.name) {
-      navigation.setOptions({
-        title: problem.name,
-        headerRight: user
-          ? () => (
-              <View style={styles.headerRight}>
-                <Pressable
-                  onPress={() => setMenuVisible(true)}
-                  style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
-                  hitSlop={8}
-                >
-                  <Text style={styles.headerActions}>Actions</Text>
-                </Pressable>
-              </View>
-            )
-          : undefined,
-      });
-    }
-  }, [problem?.name, navigation, user]);
+    const title = problem?.name ?? problemName ?? 'Problem';
+    navigation.setOptions({
+      title,
+      headerRight: user
+        ? () => (
+            <View style={styles.headerRight}>
+              <Pressable
+                onPressIn={() => setMenuVisible(true)}
+                style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={styles.headerActions}>Actions</Text>
+              </Pressable>
+            </View>
+          )
+        : undefined,
+    });
+  }, [problem?.name, problemName, navigation, user]);
 
   const handlePhotoViewerScroll = (e: { nativeEvent: { contentOffset: { x: number } } }) => {
     const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);

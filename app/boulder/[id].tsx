@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   StyleSheet,
   ScrollView,
@@ -11,8 +11,11 @@ import {
 } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useLocalSearchParams, useNavigation, router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import MapLocationPicker from '@/components/MapLocationPicker';
 import { supabase } from '@/lib/supabase';
+import { regionFromPolygon } from '@/lib/mapUtils';
+import type { PolygonCoords } from '@/lib/mapUtils';
 import { useAuth } from '@/lib/auth-context';
 import { gradeToLabel } from '@/constants/Grades';
 import Colors from '@/constants/Colors';
@@ -32,6 +35,7 @@ type Problem = {
   name: string;
   avg_grade: number | null;
   vote_count: number;
+  avg_rating: number | null;
 };
 
 export default function BoulderDetailScreen() {
@@ -58,6 +62,8 @@ export default function BoulderDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [areaPolygonCoords, setAreaPolygonCoords] = useState<PolygonCoords | null>(null);
+  const hasLoadedOnce = useRef(false);
   const { user } = useAuth();
   const navigation = useNavigation();
 
@@ -90,13 +96,30 @@ export default function BoulderDetailScreen() {
 
   const fetchProblems = useCallback(async () => {
     if (!id) return;
-    const { data } = await supabase
+    const { data: problemData } = await supabase
       .from('problems')
       .select('id, name, avg_grade, vote_count')
       .eq('boulder_id', id)
       .order('sort_order')
       .order('name');
-    setProblems(data ?? []);
+    const problemsList = problemData ?? [];
+    const problemIds = problemsList.map((p) => p.id);
+    const { data: ratingData } =
+      problemIds.length > 0
+        ? await supabase
+            .from('problem_avg_rating')
+            .select('problem_id, avg_rating')
+            .in('problem_id', problemIds)
+        : { data: [] };
+    const ratingByProblem = new Map(
+      (ratingData ?? []).map((r: { problem_id: string; avg_rating: number }) => [r.problem_id, r.avg_rating])
+    );
+    setProblems(
+      problemsList.map((p) => ({
+        ...p,
+        avg_rating: ratingByProblem.get(p.id) ?? null,
+      }))
+    );
   }, [id]);
 
   const load = useCallback(async () => {
@@ -106,9 +129,32 @@ export default function BoulderDetailScreen() {
   }, [fetchBoulder, fetchProblems]);
 
   useEffect(() => {
-    setLoading(true);
-    load();
-  }, [load]);
+    hasLoadedOnce.current = false;
+  }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const run = async () => {
+        if (!hasLoadedOnce.current) setLoading(true);
+        await load();
+        hasLoadedOnce.current = true;
+      };
+      run();
+    }, [load])
+  );
+
+  useEffect(() => {
+    if (!boulder?.area_id) return;
+    const fetchArea = async () => {
+      const { data } = await supabase
+        .from('areas')
+        .select('polygon_coords')
+        .eq('id', boulder.area_id)
+        .single();
+      setAreaPolygonCoords((data?.polygon_coords as PolygonCoords) ?? null);
+    };
+    fetchArea();
+  }, [boulder?.area_id]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -124,9 +170,9 @@ export default function BoulderDetailScreen() {
             ? () => (
                 <View style={styles.headerRight}>
                   <Pressable
-                    onPress={() => setMenuVisible(true)}
+                    onPressIn={() => setMenuVisible(true)}
                     style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
-                    hitSlop={8}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   >
                     <Text style={styles.headerActions}>Actions</Text>
                   </Pressable>
@@ -332,20 +378,29 @@ export default function BoulderDetailScreen() {
                       sectorName: sectorName ?? '',
                       areaName: areaName ?? '',
                       boulderName: boulder.name,
+                      problemName: p.name,
                     },
                   })
                 }
               >
                 <View style={styles.problemCardMain}>
                   <Text style={styles.problemName}>{p.name}</Text>
-                  <Text style={styles.problemGrade}>
-                    {gradeToLabel(p.avg_grade)}
-                    {p.vote_count > 0 && (
-                      <Text style={styles.problemVotes}>
-                        {' '}· {p.vote_count} vote{p.vote_count !== 1 ? 's' : ''}
-                      </Text>
+                  <View style={styles.problemMetaRow}>
+                    <Text style={styles.problemGrade}>
+                      {gradeToLabel(p.avg_grade)}
+                      {p.vote_count > 0 && (
+                        <Text style={styles.problemVotes}>
+                          {' '}· {p.vote_count} vote{p.vote_count !== 1 ? 's' : ''}
+                        </Text>
+                      )}
+                    </Text>
+                    {p.avg_rating != null && (
+                      <View style={styles.problemRatingRow}>
+                        <FontAwesome name="star" size={12} color={Colors.dark.tint} />
+                        <Text style={styles.problemRatingText}>{p.avg_rating.toFixed(1)}</Text>
+                      </View>
                     )}
-                  </Text>
+                  </View>
                 </View>
                 <FontAwesome name="chevron-right" size={14} color={Colors.dark.cardBorder} />
               </Pressable>
@@ -372,6 +427,12 @@ export default function BoulderDetailScreen() {
         }}
         initialLat={boulder.lat}
         initialLng={boulder.lng}
+        centerRegion={
+          areaPolygonCoords && areaPolygonCoords.length >= 3
+            ? regionFromPolygon(areaPolygonCoords)
+            : null
+        }
+        polygonCoords={areaPolygonCoords}
       />
     </>
   );
@@ -484,8 +545,24 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     marginBottom: 4,
   },
+  problemMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 2,
+  },
   problemGrade: {
     fontSize: 14,
+    color: Colors.dark.tint,
+  },
+  problemRatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  problemRatingText: {
+    fontSize: 13,
+    fontWeight: '600',
     color: Colors.dark.tint,
   },
   problemVotes: {

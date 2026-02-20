@@ -13,6 +13,8 @@ import {
 import { Text as ThemedText, View as ThemedView } from '@/components/Themed';
 import MapLocationPicker from '@/components/MapLocationPicker';
 import { supabase } from '@/lib/supabase';
+import { regionFromPolygon } from '@/lib/mapUtils';
+import type { PolygonCoords } from '@/lib/mapUtils';
 import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -36,7 +38,21 @@ export default function EditBoulderScreen() {
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
+  const [areaPolygonCoords, setAreaPolygonCoords] = useState<PolygonCoords | null>(null);
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (!areaId) return;
+    const fetchArea = async () => {
+      const { data } = await supabase
+        .from('areas')
+        .select('polygon_coords')
+        .eq('id', areaId)
+        .single();
+      setAreaPolygonCoords((data?.polygon_coords as PolygonCoords) ?? null);
+    };
+    fetchArea();
+  }, [areaId]);
 
   useEffect(() => {
     const fetchBoulder = async () => {
@@ -176,6 +192,12 @@ export default function EditBoulderScreen() {
         }}
         initialLat={lat}
         initialLng={lng}
+        centerRegion={
+          areaPolygonCoords && areaPolygonCoords.length >= 3
+            ? regionFromPolygon(areaPolygonCoords)
+            : null
+        }
+        polygonCoords={areaPolygonCoords}
       />
     </ScrollView>
   );

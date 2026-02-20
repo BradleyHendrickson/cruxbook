@@ -7,6 +7,8 @@ import MapLocationPicker from '@/components/MapLocationPicker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
+import { regionFromPolygon } from '@/lib/mapUtils';
+import type { PolygonCoords } from '@/lib/mapUtils';
 
 export default function AddSectorScreen() {
   const params = useLocalSearchParams<{ areaId: string; areaName: string }>();
@@ -18,8 +20,22 @@ export default function AddSectorScreen() {
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
+  const [areaPolygonCoords, setAreaPolygonCoords] = useState<PolygonCoords | null>(null);
   const { user } = useAuth();
   const navigation = useNavigation();
+
+  useEffect(() => {
+    if (!areaId) return;
+    const fetchArea = async () => {
+      const { data } = await supabase
+        .from('areas')
+        .select('polygon_coords')
+        .eq('id', areaId)
+        .single();
+      setAreaPolygonCoords((data?.polygon_coords as PolygonCoords) ?? null);
+    };
+    fetchArea();
+  }, [areaId]);
 
   useEffect(() => {
     if (areaName) {
@@ -140,6 +156,12 @@ export default function AddSectorScreen() {
         }}
         initialLat={lat}
         initialLng={lng}
+        centerRegion={
+          areaPolygonCoords && areaPolygonCoords.length >= 3
+            ? regionFromPolygon(areaPolygonCoords)
+            : null
+        }
+        polygonCoords={areaPolygonCoords}
       />
     </ScrollView>
   );

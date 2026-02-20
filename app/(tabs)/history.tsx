@@ -165,6 +165,7 @@ export default function HistoryScreen() {
                       id: item.problem_id,
                       sectorName: sectorName || '',
                       areaName: areaName || '',
+                      problemName: p?.name,
                     },
                   })
                 }

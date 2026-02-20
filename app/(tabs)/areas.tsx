@@ -29,9 +29,9 @@ export default function AreasScreen() {
         ? () => (
             <RNView style={styles.headerRight}>
               <Pressable
-                onPress={() => setMenuVisible(true)}
+                onPressIn={() => setMenuVisible(true)}
                 style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
-                hitSlop={8}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
                 <RNText style={styles.headerActions}>Actions</RNText>
               </Pressable>

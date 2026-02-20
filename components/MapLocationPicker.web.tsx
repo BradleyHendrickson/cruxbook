@@ -17,6 +17,8 @@ type MapLocationPickerProps = {
   onConfirm: (lat: number, lng: number) => void;
   initialLat?: number | null;
   initialLng?: number | null;
+  centerRegion?: { latitude: number; longitude: number; latitudeDelta?: number; longitudeDelta?: number } | null;
+  polygonCoords?: { lat: number; lng: number }[] | null;
 };
 
 export default function MapLocationPicker({
@@ -25,6 +27,8 @@ export default function MapLocationPicker({
   onConfirm,
   initialLat,
   initialLng,
+  centerRegion: _centerRegion,
+  polygonCoords: _polygonCoords,
 }: MapLocationPickerProps) {
   const [lat, setLat] = useState<string>(initialLat?.toString() ?? '');
   const [lng, setLng] = useState<string>(initialLng?.toString() ?? '');

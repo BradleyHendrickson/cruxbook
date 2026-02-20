@@ -13,6 +13,8 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import SectorMapView from '@/components/SectorMapView';
 import MapLocationPicker from '@/components/MapLocationPicker';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
+import { regionFromPolygon } from '@/lib/mapUtils';
+import type { PolygonCoords } from '@/lib/mapUtils';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
@@ -57,6 +59,7 @@ export default function SectorDetailScreen() {
   const [sectorLat, setSectorLat] = useState<number | null>(null);
   const [sectorLng, setSectorLng] = useState<number | null>(null);
   const [sectorPolygonCoords, setSectorPolygonCoords] = useState<{ lat: number; lng: number }[] | null>(null);
+  const [areaPolygonCoords, setAreaPolygonCoords] = useState<PolygonCoords | null>(null);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const hasLoadedOnce = useRef(false);
@@ -134,9 +137,9 @@ export default function SectorDetailScreen() {
       headerRight: () => (
         <View style={styles.headerRight}>
           <Pressable
-            onPress={() => setMenuVisible(true)}
+            onPressIn={() => setMenuVisible(true)}
             style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
-            hitSlop={8}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Text style={styles.headerActions}>Actions</Text>
           </Pressable>
@@ -162,6 +165,15 @@ export default function SectorDetailScreen() {
     setSectorLat(sectorData?.lat ?? null);
     setSectorLng(sectorData?.lng ?? null);
     setSectorPolygonCoords((sectorData?.polygon_coords as { lat: number; lng: number }[]) ?? null);
+
+    if (areaId) {
+      const { data: areaData } = await supabase
+        .from('areas')
+        .select('polygon_coords')
+        .eq('id', areaId)
+        .single();
+      setAreaPolygonCoords((areaData?.polygon_coords as PolygonCoords) ?? null);
+    }
   };
 
   useEffect(() => {
@@ -253,6 +265,12 @@ export default function SectorDetailScreen() {
           }}
           initialLat={sectorLat}
           initialLng={sectorLng}
+          centerRegion={
+            areaPolygonCoords && areaPolygonCoords.length >= 3
+              ? regionFromPolygon(areaPolygonCoords)
+              : null
+          }
+          polygonCoords={areaPolygonCoords}
         />
         <View style={styles.map}>
           <SectorMapView
@@ -297,6 +315,12 @@ export default function SectorDetailScreen() {
         }}
         initialLat={sectorLat}
         initialLng={sectorLng}
+        centerRegion={
+          areaPolygonCoords && areaPolygonCoords.length >= 3
+            ? regionFromPolygon(areaPolygonCoords)
+            : null
+        }
+        polygonCoords={areaPolygonCoords}
       />
       <FlatList
         data={boulders}

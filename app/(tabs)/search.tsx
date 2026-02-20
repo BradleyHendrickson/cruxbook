@@ -128,6 +128,7 @@ export default function SearchScreen() {
                 id: p.id,
                 sectorName: p.sector_name ?? '',
                 areaName: p.area_name,
+                problemName: p.name,
               },
             });
           }

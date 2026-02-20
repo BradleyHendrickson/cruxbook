@@ -9,10 +9,12 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import MapView, { Marker, MapPressEvent } from 'react-native-maps';
+import MapView, { Marker, Polygon, MapPressEvent } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Colors from '@/constants/Colors';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { sanitizePolygonCoords } from '@/lib/mapUtils';
+import type { PolygonCoords } from '@/lib/mapUtils';
 
 const DEFAULT_LAT = 37.5;
 const DEFAULT_LNG = -122;
@@ -24,6 +26,15 @@ type MapLocationPickerProps = {
   onConfirm: (lat: number, lng: number) => void;
   initialLat?: number | null;
   initialLng?: number | null;
+  /** When no pin is set, center the map on this region (e.g. area polygon center). */
+  centerRegion?: {
+    latitude: number;
+    longitude: number;
+    latitudeDelta?: number;
+    longitudeDelta?: number;
+  } | null;
+  /** Optional polygon to display (e.g. area boundary) to help place the pin. */
+  polygonCoords?: PolygonCoords | null;
 };
 
 export default function MapLocationPicker({
@@ -32,6 +43,8 @@ export default function MapLocationPicker({
   onConfirm,
   initialLat,
   initialLng,
+  centerRegion,
+  polygonCoords,
 }: MapLocationPickerProps) {
   const [lat, setLat] = useState<number | null>(initialLat ?? null);
   const [lng, setLng] = useState<number | null>(initialLng ?? null);
@@ -83,12 +96,27 @@ export default function MapLocationPicker({
     }
   };
 
-  const region = {
-    latitude: lat ?? initialLat ?? DEFAULT_LAT,
-    longitude: lng ?? initialLng ?? DEFAULT_LNG,
-    latitudeDelta: DEFAULT_DELTA,
-    longitudeDelta: DEFAULT_DELTA,
-  };
+  const hasPin = lat != null || initialLat != null;
+  const region = hasPin
+    ? {
+        latitude: lat ?? initialLat ?? DEFAULT_LAT,
+        longitude: lng ?? initialLng ?? DEFAULT_LNG,
+        latitudeDelta: DEFAULT_DELTA,
+        longitudeDelta: DEFAULT_DELTA,
+      }
+    : centerRegion
+      ? {
+          latitude: centerRegion.latitude,
+          longitude: centerRegion.longitude,
+          latitudeDelta: centerRegion.latitudeDelta ?? 0.02,
+          longitudeDelta: centerRegion.longitudeDelta ?? 0.02,
+        }
+      : {
+          latitude: DEFAULT_LAT,
+          longitude: DEFAULT_LNG,
+          latitudeDelta: DEFAULT_DELTA,
+          longitudeDelta: DEFAULT_DELTA,
+        };
 
   return (
     <Modal
@@ -114,6 +142,17 @@ export default function MapLocationPicker({
               initialRegion={region}
               onPress={handleMapPress}
             >
+              {polygonCoords && sanitizePolygonCoords(polygonCoords).length >= 3 && (
+                <Polygon
+                  coordinates={sanitizePolygonCoords(polygonCoords).map((c) => ({
+                    latitude: c.lat,
+                    longitude: c.lng,
+                  }))}
+                  fillColor="rgba(90, 138, 90, 0.2)"
+                  strokeColor={Colors.dark.tint}
+                  strokeWidth={2}
+                />
+              )}
               {lat != null && lng != null && (
                 <Marker coordinate={{ latitude: lat, longitude: lng }} />
               )}
@@ -225,6 +264,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   buttonSecondary: {
+    flex: 0,
     backgroundColor: Colors.dark.background,
     borderWidth: 1,
     borderColor: Colors.dark.cardBorder,

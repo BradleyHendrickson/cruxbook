@@ -4,12 +4,12 @@ import {
   StyleSheet,
   TextInput,
   Pressable,
-  ScrollView,
   Alert,
   Platform,
   Modal,
   FlatList,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Picker } from '@react-native-picker/picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text, View } from '@/components/Themed';
@@ -140,7 +140,14 @@ export default function AddProblemScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <KeyboardAwareScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      enableOnAndroid
+      extraScrollHeight={40}
+      enableAutomaticScroll
+    >
       <View style={styles.form}>
         <Text style={styles.label}>Name *</Text>
         <TextInput
@@ -306,13 +313,13 @@ export default function AddProblemScreen() {
           </Text>
         </Pressable>
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.dark.background },
-  content: { padding: 16 },
+  content: { padding: 16, paddingBottom: 40 },
   form: { gap: 8 },
   label: {
     fontSize: 14,
