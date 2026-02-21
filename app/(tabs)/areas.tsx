@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useNavigation } from 'expo-router';
 import { Text as ThemedText, View } from '@/components/Themed';
+import { FadeInView, AnimatedPressable } from '@/components/Animated';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
@@ -94,22 +95,24 @@ export default function AreasScreen() {
       <FlatList
         data={areas}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => {
+        renderItem={({ item, index }) => {
           const sectorCount = item.sectors?.[0]?.count ?? 0;
           return (
-            <Pressable
-              style={styles.card}
-              onPress={() => router.push({ pathname: '/area/[id]', params: { id: item.id } })}
-            >
-              <ThemedText style={styles.name}>{item.name}</ThemedText>
-              {item.description ? (
-                <ThemedText style={styles.description} numberOfLines={4}>{item.description}</ThemedText>
-              ) : null}
-              <RNView style={styles.statsRow}>
-                <ThemedText style={[styles.stat, styles.statFirst]}>{sectorCount} sector{sectorCount !== 1 ? 's' : ''}</ThemedText>
-                <ThemedText style={styles.stat}>{item.boulder_count} boulder{item.boulder_count !== 1 ? 's' : ''}</ThemedText>
-              </RNView>
-            </Pressable>
+            <FadeInView index={index}>
+              <AnimatedPressable
+                style={styles.card}
+                onPress={() => router.push({ pathname: '/area/[id]', params: { id: item.id } })}
+              >
+                <ThemedText style={styles.name}>{item.name}</ThemedText>
+                {item.description ? (
+                  <ThemedText style={styles.description} numberOfLines={4}>{item.description}</ThemedText>
+                ) : null}
+                <RNView style={styles.statsRow}>
+                  <ThemedText style={[styles.stat, styles.statFirst]}>{sectorCount} sector{sectorCount !== 1 ? 's' : ''}</ThemedText>
+                  <ThemedText style={styles.stat}>{item.boulder_count} boulder{item.boulder_count !== 1 ? 's' : ''}</ThemedText>
+                </RNView>
+              </AnimatedPressable>
+            </FadeInView>
           );
         }}
         contentContainerStyle={styles.list}

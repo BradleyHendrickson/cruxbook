@@ -13,6 +13,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useLocalSearchParams, useNavigation, router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import MapLocationPicker from '@/components/MapLocationPicker';
+import { FadeInView, AnimatedPressable } from '@/components/Animated';
 import { supabase } from '@/lib/supabase';
 import { regionFromPolygon } from '@/lib/mapUtils';
 import type { PolygonCoords } from '@/lib/mapUtils';
@@ -364,25 +365,25 @@ export default function BoulderDetailScreen() {
               )}
             </View>
           ) : (
-            problems.map((p) => (
-              <Pressable
-                key={p.id}
-                style={styles.problemCard}
-                onPress={() =>
-                  router.push({
-                    pathname: '/problem/[id]',
-                    params: {
-                      id: p.id,
-                      sectorId: boulder.sector_id,
-                      areaId: boulder.area_id,
-                      sectorName: sectorName ?? '',
-                      areaName: areaName ?? '',
-                      boulderName: boulder.name,
-                      problemName: p.name,
-                    },
-                  })
-                }
-              >
+            problems.map((p, index) => (
+              <FadeInView key={p.id} index={index}>
+                <AnimatedPressable
+                  style={styles.problemCard}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/problem/[id]',
+                      params: {
+                        id: p.id,
+                        sectorId: boulder.sector_id,
+                        areaId: boulder.area_id,
+                        sectorName: sectorName ?? '',
+                        areaName: areaName ?? '',
+                        boulderName: boulder.name,
+                        problemName: p.name,
+                      },
+                    })
+                  }
+                >
                 <View style={styles.problemCardMain}>
                   <Text style={styles.problemName}>{p.name}</Text>
                   <View style={styles.problemMetaRow}>
@@ -403,7 +404,8 @@ export default function BoulderDetailScreen() {
                   </View>
                 </View>
                 <FontAwesome name="chevron-right" size={14} color={Colors.dark.cardBorder} />
-              </Pressable>
+              </AnimatedPressable>
+              </FadeInView>
             ))
           )}
         </View>

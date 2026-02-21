@@ -14,6 +14,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
 import { Text as ThemedText, View } from '@/components/Themed';
 import { useProblemSearch } from '@/lib/useProblemSearch';
+import { FadeInView, AnimatedPressable } from '@/components/Animated';
 import { GRADES, gradeToLabel } from '@/constants/Grades';
 import { STYLES } from '@/constants/Styles';
 import Colors from '@/constants/Colors';
@@ -96,8 +97,10 @@ export default function SearchScreen() {
 
   const renderItem = ({
     item: { type, item },
+    index,
   }: {
     item: { type: 'area' | 'sector' | 'problem'; item: unknown };
+    index: number;
   }) => {
     const i = item as { id: string; name: string; area_name?: string; sector_name?: string; avg_grade?: number | null; vote_count?: number };
     const subtitle =
@@ -109,9 +112,10 @@ export default function SearchScreen() {
           : undefined;
 
     return (
-      <Pressable
-        style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
-        onPress={() => {
+      <FadeInView index={index} disabled>
+        <AnimatedPressable
+          style={styles.card}
+          onPress={() => {
           if (type === 'area') {
             router.push({ pathname: '/area/[id]', params: { id: i.id } });
           } else if (type === 'sector') {
@@ -138,7 +142,8 @@ export default function SearchScreen() {
         {subtitle && (
           <ThemedText style={styles.cardSubtitle}>{subtitle}</ThemedText>
         )}
-      </Pressable>
+      </AnimatedPressable>
+      </FadeInView>
     );
   };
 
