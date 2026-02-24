@@ -9,13 +9,17 @@ import {
   Modal,
   Image,
   TextInput,
-  KeyboardAvoidingView,
   Platform,
   Alert,
   FlatList,
   Dimensions,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
+const MainScrollView = Platform.OS === 'web' ? ScrollView : KeyboardAwareScrollView;
 import { ImageZoom } from '@likashefqet/react-native-image-zoom';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,6 +29,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
 import { gradeToLabel } from '@/constants/Grades';
+import { AnimatedStar } from '@/components/Animated';
 import { styleToLabel } from '@/constants/Styles';
 
 type Problem = {
@@ -97,6 +102,7 @@ export default function ProblemDetailScreen() {
   const [logOutcome, setLogOutcome] = useState<'flash' | 'send' | 'attempt'>('send');
   const [logRating, setLogRating] = useState<number | null>(null);
   const [logNotes, setLogNotes] = useState('');
+  const insets = useSafeAreaInsets();
   const [logLoading, setLogLoading] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -212,6 +218,35 @@ export default function ProblemDetailScreen() {
     }
   };
 
+  const postComment = useCallback(async () => {
+    if (!commentBody.trim() || !id || !user) return;
+    setCommentLoading(true);
+    try {
+      const username = (user.user_metadata?.username as string) ?? '';
+      if (username) {
+        await supabase.from('profiles').upsert(
+          { id: user.id, username },
+          { onConflict: 'id' }
+        );
+      }
+      const { error } = await supabase.from('comments').insert({
+        problem_id: id,
+        user_id: user.id,
+        body: commentBody.trim(),
+      });
+      if (error) throw error;
+      setCommentBody('');
+      const { data } = await supabase.rpc('get_problem_comments', {
+        p_problem_id: id,
+      });
+      setComments((data ?? []) as Comment[]);
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to post comment');
+    } finally {
+      setCommentLoading(false);
+    }
+  }, [commentBody, id, user]);
+
   if (!id) {
     return (
       <View style={styles.center}>
@@ -290,11 +325,18 @@ export default function ProblemDetailScreen() {
   return (
     <>
       <ProblemMenu />
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.container}>
+        <MainScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.content, user && styles.contentWithCommentBar]}
+          showsVerticalScrollIndicator={false}
+          {...(Platform.OS !== 'web' && {
+            keyboardShouldPersistTaps: 'handled' as const,
+            enableOnAndroid: true,
+            extraScrollHeight: 60,
+            enableAutomaticScroll: true,
+          })}
+        >
         <View style={styles.header}>
           <Text style={styles.grade}>{gradeToLabel(problem.avg_grade)}</Text>
           {problem.vote_count > 0 && (
@@ -474,8 +516,9 @@ export default function ProblemDetailScreen() {
           <View style={styles.ratingRow}>
             <View style={styles.starRow}>
               {[1, 2, 3, 4, 5].map((star) => (
-                <Pressable
+                <AnimatedStar
                   key={star}
+                  filled={userRating != null && star <= userRating}
                   onPress={async () => {
                     if (!user || !id) return;
                     const newRating = userRating === star ? null : star;
@@ -507,14 +550,9 @@ export default function ProblemDetailScreen() {
                       setRatingCount(0);
                     }
                   }}
-                  hitSlop={8}
-                >
-                  <FontAwesome
-                    name={userRating != null && star <= userRating ? 'star' : 'star-o'}
-                    size={28}
-                    color={user ? Colors.dark.tint : Colors.dark.cardBorder}
-                  />
-                </Pressable>
+                  size={28}
+                  color={user ? Colors.dark.tint : Colors.dark.cardBorder}
+                />
               ))}
             </View>
             {(avgRating != null || ratingCount > 0) && (
@@ -528,6 +566,9 @@ export default function ProblemDetailScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Comments</Text>
+          {!user && (
+            <Text style={styles.commentSignIn}>Sign in to add a comment</Text>
+          )}
           {comments.map((c) => (
             <View key={c.id} style={styles.commentCard}>
               <View style={styles.commentCardHeader}>
@@ -571,60 +612,6 @@ export default function ProblemDetailScreen() {
               </Text>
             </View>
           ))}
-          {user ? (
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={styles.commentForm}
-            >
-              <TextInput
-                style={styles.commentInput}
-                placeholder="Add a comment..."
-                placeholderTextColor="rgba(196, 167, 125, 0.5)"
-                value={commentBody}
-                onChangeText={setCommentBody}
-                multiline
-                maxLength={500}
-              />
-              <Pressable
-                style={[styles.commentSubmit, (!commentBody.trim() || commentLoading) && styles.commentSubmitDisabled]}
-                onPress={async () => {
-                  if (!commentBody.trim() || !id || !user) return;
-                  setCommentLoading(true);
-                  try {
-                    const username = (user.user_metadata?.username as string) ?? '';
-                    if (username) {
-                      await supabase.from('profiles').upsert(
-                        { id: user.id, username },
-                        { onConflict: 'id' }
-                      );
-                    }
-                    const { error } = await supabase.from('comments').insert({
-                      problem_id: id,
-                      user_id: user.id,
-                      body: commentBody.trim(),
-                    });
-                    if (error) throw error;
-                    setCommentBody('');
-                    const { data } = await supabase.rpc('get_problem_comments', {
-                      p_problem_id: id,
-                    });
-                    setComments((data ?? []) as Comment[]);
-                  } catch (e) {
-                    Alert.alert('Error', e instanceof Error ? e.message : 'Failed to post comment');
-                  } finally {
-                    setCommentLoading(false);
-                  }
-                }}
-                disabled={!commentBody.trim() || commentLoading}
-              >
-                <Text style={styles.commentSubmitText}>
-                  {commentLoading ? 'Posting...' : 'Post'}
-                </Text>
-              </Pressable>
-            </KeyboardAvoidingView>
-          ) : (
-            <Text style={styles.commentSignIn}>Sign in to add a comment</Text>
-          )}
         </View>
 
         <Modal
@@ -672,17 +659,13 @@ export default function ProblemDetailScreen() {
               <Text style={styles.logClimbLabel}>Rating (optional)</Text>
               <View style={styles.logClimbStars}>
                 {[1, 2, 3, 4, 5].map((star) => (
-                  <Pressable
+                  <AnimatedStar
                     key={star}
+                    filled={logRating != null && star <= logRating}
                     onPress={() => setLogRating(logRating === star ? null : star)}
-                    hitSlop={8}
-                  >
-                    <FontAwesome
-                      name={logRating != null && star <= logRating ? 'star' : 'star-o'}
-                      size={24}
-                      color={Colors.dark.tint}
-                    />
-                  </Pressable>
+                    size={24}
+                    color={Colors.dark.tint}
+                  />
                 ))}
               </View>
               <Text style={styles.logClimbLabel}>Notes (optional)</Text>
@@ -803,7 +786,56 @@ export default function ProblemDetailScreen() {
         >
           <Text style={styles.backToBoulderText}>View boulder</Text>
         </Pressable>
-      </ScrollView>
+      </MainScrollView>
+
+      {user && (
+        Platform.OS === 'web' ? (
+          <View style={[styles.commentBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Add a comment..."
+              placeholderTextColor="rgba(196, 167, 125, 0.5)"
+              value={commentBody}
+              onChangeText={setCommentBody}
+              multiline
+              maxLength={500}
+            />
+            <Pressable
+              style={[styles.commentSubmit, (!commentBody.trim() || commentLoading) && styles.commentSubmitDisabled]}
+              onPress={postComment}
+              disabled={!commentBody.trim() || commentLoading}
+            >
+              <Text style={styles.commentSubmitText}>
+                {commentLoading ? 'Posting...' : 'Post'}
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+            <View style={[styles.commentBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+              <TextInput
+                style={styles.commentInput}
+                placeholder="Add a comment..."
+                placeholderTextColor="rgba(196, 167, 125, 0.5)"
+                value={commentBody}
+                onChangeText={setCommentBody}
+                multiline
+                maxLength={500}
+              />
+              <Pressable
+                style={[styles.commentSubmit, (!commentBody.trim() || commentLoading) && styles.commentSubmitDisabled]}
+                onPress={postComment}
+                disabled={!commentBody.trim() || commentLoading}
+              >
+                <Text style={styles.commentSubmitText}>
+                  {commentLoading ? 'Posting...' : 'Post'}
+                </Text>
+              </Pressable>
+            </View>
+          </KeyboardStickyView>
+        )
+      )}
+      </View>
     </>
   );
 }
@@ -818,6 +850,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.dark.background,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  contentWithCommentBar: {
+    paddingBottom: 80,
   },
   content: {
     padding: 20,
@@ -1067,11 +1105,14 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     marginTop: 6,
   },
-  commentForm: {
+  commentBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 10,
-    marginTop: 8,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.dark.cardBorder,
+    backgroundColor: Colors.dark.background,
   },
   commentInput: {
     flex: 1,

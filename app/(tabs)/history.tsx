@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router } from 'expo-router';
+import { FadeInView, AnimatedPressable } from '@/components/Animated';
 import { Text as ThemedText } from '@/components/Themed';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
@@ -148,7 +149,7 @@ export default function HistoryScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const p = item.problems;
             const b = p?.boulders;
             const areaName = b?.areas?.name ?? '';
@@ -156,20 +157,21 @@ export default function HistoryScreen() {
             const breadcrumb = [areaName, sectorName].filter(Boolean).join(' › ');
             const outcomeLabel = OUTCOMES.find((o) => o.value === item.outcome)?.label ?? item.outcome;
             return (
-              <Pressable
-                style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
-                onPress={() =>
-                  router.push({
-                    pathname: '/problem/[id]',
-                    params: {
-                      id: item.problem_id,
-                      sectorName: sectorName || '',
-                      areaName: areaName || '',
-                      problemName: p?.name,
-                    },
-                  })
-                }
-              >
+              <FadeInView index={index}>
+                <AnimatedPressable
+                  style={styles.card}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/problem/[id]',
+                      params: {
+                        id: item.problem_id,
+                        sectorName: sectorName || '',
+                        areaName: areaName || '',
+                        problemName: p?.name,
+                      },
+                    })
+                  }
+                >
                 <View style={styles.cardHeader}>
                   <ThemedText style={styles.boulderName}>{p?.name ?? 'Unknown'}</ThemedText>
                   <View style={styles.outcomeBadge}>
@@ -199,7 +201,8 @@ export default function HistoryScreen() {
                     {item.notes}
                   </ThemedText>
                 ) : null}
-              </Pressable>
+              </AnimatedPressable>
+              </FadeInView>
             );
           }}
         />

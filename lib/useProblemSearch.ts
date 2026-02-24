@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import { supabase } from '@/lib/supabase';
 import { StyleValue } from '@/constants/Styles';
@@ -119,6 +119,8 @@ function mapProblemRow(p: {
   };
 }
 
+const DEBOUNCE_MS = 300;
+
 export function useProblemSearch(params: SearchParams) {
   const [results, setResults] = useState<SearchResults>({
     areas: [],
@@ -127,6 +129,19 @@ export function useProblemSearch(params: SearchParams) {
   });
   const [loading, setLoading] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [debouncedQuery, setDebouncedQuery] = useState(params.query);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    debounceRef.current && clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(params.query);
+      debounceRef.current = null;
+    }, DEBOUNCE_MS);
+    return () => {
+      debounceRef.current && clearTimeout(debounceRef.current);
+    };
+  }, [params.query]);
 
   const fetchLocation = useCallback(async () => {
     try {
@@ -152,7 +167,7 @@ export function useProblemSearch(params: SearchParams) {
   const search = useCallback(async () => {
     setLoading(true);
     try {
-      const q = params.query.trim();
+      const q = debouncedQuery.trim();
       const hasQuery = q.length >= 2;
       const hasLocation =
         params.sort === 'proximity' &&
@@ -310,7 +325,7 @@ export function useProblemSearch(params: SearchParams) {
       setLoading(false);
     }
   }, [
-    params.query,
+    debouncedQuery,
     params.minGrade,
     params.maxGrade,
     params.styles,
@@ -321,14 +336,14 @@ export function useProblemSearch(params: SearchParams) {
   ]);
 
   useEffect(() => {
-    const hasQuery = params.query.trim().length >= 2;
+    const hasQuery = debouncedQuery.trim().length >= 2;
     const hasLocation = params.userLat != null && params.userLng != null && params.sort === 'proximity';
     if (hasQuery || hasLocation) {
       search();
     } else {
       setResults({ areas: [], sectors: [], problems: [] });
     }
-  }, [params.query, params.sort, params.userLat, params.userLng, params.searchTypes, search]);
+  }, [debouncedQuery, params.sort, params.userLat, params.userLng, params.searchTypes, search]);
 
   return {
     results,

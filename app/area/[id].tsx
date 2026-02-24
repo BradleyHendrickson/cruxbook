@@ -16,6 +16,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import AreaMapView from '@/components/AreaMapView';
 import AreaHeaderMap from '@/components/AreaHeaderMap';
 import AreaProblemsFilters from '@/components/AreaProblemsFilters';
+import { FadeInView, AnimatedPressable } from '@/components/Animated';
 import EditableMapView from '@/components/EditableMapView';
 import MapLocationPicker from '@/components/MapLocationPicker';
 import { regionFromPolygon, regionFromPoints, sanitizePolygonCoords } from '@/lib/mapUtils';
@@ -50,12 +51,20 @@ type BoulderMarker = {
   sector_id?: string | null;
 };
 
+type BoulderListItem = {
+  id: string;
+  name: string;
+  problem_count: number;
+  sector_id: string | null;
+};
+
 export default function AreaDetailScreen() {
   const params = useLocalSearchParams<{ id: string; openMap?: string }>();
   const id = typeof params.id === 'string' ? params.id : params.id?.[0];
   const [areaName, setAreaName] = useState<string>('');
   const [sectors, setSectors] = useState<Sector[]>([]);
   const [boulders, setBoulders] = useState<BoulderMarker[]>([]);
+  const [allBoulders, setAllBoulders] = useState<BoulderListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const openMap = typeof params.openMap === 'string' ? params.openMap : params.openMap?.[0];
@@ -67,7 +76,7 @@ export default function AreaDetailScreen() {
   const [areaPolygonCoords, setAreaPolygonCoords] = useState<PolygonCoords | null>(null);
   const [locationPickerVisible, setLocationPickerVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<'problems' | 'sectors'>('problems');
+  const [activeTab, setActiveTab] = useState<'problems' | 'boulders' | 'sectors'>('problems');
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const [problemQuery, setProblemQuery] = useState('');
   const [minGrade, setMinGrade] = useState<number | null>(null);
@@ -167,6 +176,20 @@ export default function AreaDetailScreen() {
         problem_count: b.problem_count ?? 0,
         lat: b.lat!,
         lng: b.lng!,
+        sector_id: b.sector_id ?? null,
+      }))
+    );
+
+    const { data: allBouldersData } = await supabase
+      .from('boulders')
+      .select('id, name, problem_count, sector_id')
+      .eq('area_id', id)
+      .order('name');
+    setAllBoulders(
+      (allBouldersData ?? []).map((b) => ({
+        id: b.id,
+        name: b.name,
+        problem_count: b.problem_count ?? 0,
         sector_id: b.sector_id ?? null,
       }))
     );
@@ -580,19 +603,6 @@ export default function AreaDetailScreen() {
         filterModalVisible={filterModalVisible}
         onFilterModalVisibleChange={setFilterModalVisible}
       />
-      {!boulderFilterId && (
-        <View style={styles.statsRow}>
-          <ThemedText style={styles.statsText}>
-            {totalProblemCount} problem{totalProblemCount !== 1 ? 's' : ''}
-          </ThemedText>
-          <ThemedText style={styles.statsText}>
-            {boulders.length} boulder{boulders.length !== 1 ? 's' : ''}
-          </ThemedText>
-          <ThemedText style={styles.statsText}>
-            {sectors.length} sector{sectors.length !== 1 ? 's' : ''}
-          </ThemedText>
-        </View>
-      )}
       {hasActiveFilters && !boulderFilterId && (
         <ThemedText style={styles.matchText}>
           {problems.length} match{problems.length !== 1 ? 'es' : ''}
@@ -636,22 +646,30 @@ export default function AreaDetailScreen() {
           }
         />
         <View style={styles.tabBar}>
-          <Pressable
+          <AnimatedPressable
             style={[styles.tab, activeTab === 'problems' && styles.tabActive]}
             onPress={() => setActiveTab('problems')}
           >
             <ThemedText style={[styles.tabText, activeTab === 'problems' && styles.tabTextActive]}>
               Problems
             </ThemedText>
-          </Pressable>
-          <Pressable
+          </AnimatedPressable>
+          <AnimatedPressable
+            style={[styles.tab, activeTab === 'boulders' && styles.tabActive]}
+            onPress={() => setActiveTab('boulders')}
+          >
+            <ThemedText style={[styles.tabText, activeTab === 'boulders' && styles.tabTextActive]}>
+              Boulders
+            </ThemedText>
+          </AnimatedPressable>
+          <AnimatedPressable
             style={[styles.tab, activeTab === 'sectors' && styles.tabActive]}
             onPress={() => setActiveTab('sectors')}
           >
             <ThemedText style={[styles.tabText, activeTab === 'sectors' && styles.tabTextActive]}>
               Sectors
             </ThemedText>
-          </Pressable>
+          </AnimatedPressable>
         </View>
         {activeTab === 'problems' ? (
           <View style={styles.problemsContainer}>
@@ -661,25 +679,26 @@ export default function AreaDetailScreen() {
               keyExtractor={(item) => item.id}
               style={styles.problemsList}
               contentContainerStyle={styles.list}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={styles.card}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/problem/[id]',
-                      params: {
-                        id: item.id,
-                        sectorName: item.sector_name ?? '',
-                        areaName,
-                        areaId: id ?? '',
-                        boulderName: item.boulder_name,
-                        problemName: item.name,
-                      },
-                    })
-                  }
-                >
-                  <ThemedText style={styles.name}>{item.name}</ThemedText>
-                  <View style={styles.problemMetaRow}>
+              renderItem={({ item, index }) => (
+                <FadeInView index={index}>
+                  <AnimatedPressable
+                    style={styles.card}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/problem/[id]',
+                        params: {
+                          id: item.id,
+                          sectorName: item.sector_name ?? '',
+                          areaName,
+                          areaId: id ?? '',
+                          boulderName: item.boulder_name,
+                          problemName: item.name,
+                        },
+                      })
+                    }
+                  >
+                    <ThemedText style={styles.name}>{item.name}</ThemedText>
+                    <View style={styles.problemMetaRow}>
                   <ThemedText style={styles.problemMeta}>
                     {item.avg_grade != null ? gradeToLabel(item.avg_grade) : '—'} · {item.boulder_name}
                     {item.sector_name ? ` · ${item.sector_name}` : ''}
@@ -691,7 +710,8 @@ export default function AreaDetailScreen() {
                     </View>
                   )}
                 </View>
-                </Pressable>
+                  </AnimatedPressable>
+                </FadeInView>
               )}
             contentContainerStyle={styles.list}
             ListEmptyComponent={
@@ -712,35 +732,82 @@ export default function AreaDetailScreen() {
             }
             />
           </View>
+        ) : activeTab === 'boulders' ? (
+          <FlatList
+            data={allBoulders}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item, index }) => (
+              <FadeInView index={index}>
+                <AnimatedPressable
+                  style={styles.card}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/boulder/[id]',
+                      params: {
+                        id: item.id,
+                        areaId: id,
+                        areaName,
+                        sectorName: sectors.find((s) => s.id === item.sector_id)?.name ?? '',
+                      },
+                    })
+                  }
+                >
+                  <ThemedText style={styles.name}>{item.name}</ThemedText>
+                  <View style={styles.problemMetaRow}>
+                    <ThemedText style={styles.problemMeta}>
+                      {item.problem_count} problem{item.problem_count !== 1 ? 's' : ''}
+                      {item.sector_id
+                        ? ` · ${sectors.find((s) => s.id === item.sector_id)?.name ?? 'Unknown'}`
+                        : ''}
+                    </ThemedText>
+                  </View>
+                </AnimatedPressable>
+              </FadeInView>
+            )}
+            contentContainerStyle={styles.list}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <ThemedText style={styles.emptyText}>No boulders yet</ThemedText>
+                {user && (
+                  <ThemedText style={styles.emptySubtext}>Add boulders from a sector</ThemedText>
+                )}
+              </View>
+            }
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+          />
         ) : (
           <FlatList
             data={sectors}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <Pressable
-                style={styles.card}
-                onPress={() =>
-                  router.push({
-                    pathname: '/sector/[id]',
-                    params: {
-                      id: item.id,
-                      areaId: id,
-                      sectorName: item.name,
-                      areaName,
-                    },
-                  })
-                }
-              >
-                <ThemedText style={styles.name}>{item.name}</ThemedText>
-                {item.description ? (
-                  <ThemedText style={styles.description} numberOfLines={3}>
-                    {item.description}
+            renderItem={({ item, index }) => (
+              <FadeInView index={index}>
+                <AnimatedPressable
+                  style={styles.card}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/sector/[id]',
+                      params: {
+                        id: item.id,
+                        areaId: id,
+                        sectorName: item.name,
+                        areaName,
+                      },
+                    })
+                  }
+                >
+                  <ThemedText style={styles.name}>{item.name}</ThemedText>
+                  {item.description ? (
+                    <ThemedText style={styles.description} numberOfLines={3}>
+                      {item.description}
+                    </ThemedText>
+                  ) : null}
+                  <ThemedText style={styles.count}>
+                    {item.boulder_count} boulder{item.boulder_count !== 1 ? 's' : ''}
                   </ThemedText>
-                ) : null}
-                <ThemedText style={styles.count}>
-                  {item.boulder_count} boulder{item.boulder_count !== 1 ? 's' : ''}
-                </ThemedText>
-              </Pressable>
+                </AnimatedPressable>
+              </FadeInView>
             )}
             contentContainerStyle={styles.list}
             ListEmptyComponent={
@@ -789,13 +856,6 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   problemsList: { flex: 1 },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 16,
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  statsText: { fontSize: 14, opacity: 0.85, color: Colors.dark.text },
   matchText: { fontSize: 13, opacity: 0.7, marginBottom: 8, color: Colors.dark.text },
   selectedBoulderTitle: {
     fontSize: 18,

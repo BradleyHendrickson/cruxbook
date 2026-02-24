@@ -1,23 +1,42 @@
 import { useCallback, useEffect, useState } from 'react';
-import { StyleSheet, FlatList, Pressable, RefreshControl, Text as RNText, View as RNView, Modal } from 'react-native';
+import {
+  StyleSheet,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  Text as RNText,
+  View as RNView,
+  Modal,
+  ActivityIndicator,
+  Platform,
+  ImageBackground,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Linking from 'expo-linking';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { router, useNavigation } from 'expo-router';
 import { Text as ThemedText, View } from '@/components/Themed';
+import { FadeInView, AnimatedPressable } from '@/components/Animated';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import Colors from '@/constants/Colors';
+
+const CARD_HEIGHT = 180;
 
 type Area = {
   id: string;
   name: string;
   description: string | null;
   boulder_count: number;
+  lat: number | null;
+  lng: number | null;
+  photoUrl: string | null;
   sectors?: { count: number }[];
 };
 
 export default function AreasScreen() {
   const [areas, setAreas] = useState<Area[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const { user } = useAuth();
@@ -41,24 +60,51 @@ export default function AreasScreen() {
     });
   }, [navigation, user]);
 
-  const fetchAreas = async () => {
-    const { data } = await supabase
-      .from('areas')
-      .select('id, name, description, boulder_count, sectors(count)')
-      .is('parent_id', null)
-      .order('name');
-    setAreas(data ?? []);
-  };
+  const fetchAreas = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    try {
+      const { data: areasData } = await supabase
+        .from('areas')
+        .select('id, name, description, boulder_count, lat, lng, sectors(count)')
+        .is('parent_id', null)
+        .order('name');
+
+      const areasList = areasData ?? [];
+      const areaIds = areasList.map((a) => a.id);
+
+      let photoByArea: Record<string, string> = {};
+      if (areaIds.length > 0) {
+        const { data: photosData } = await supabase
+          .from('area_photos')
+          .select('area_id, url')
+          .in('area_id', areaIds)
+          .order('created_at', { ascending: true });
+
+        for (const p of photosData ?? []) {
+          if (!photoByArea[p.area_id]) photoByArea[p.area_id] = p.url;
+        }
+      }
+
+      setAreas(
+        areasList.map((a) => ({
+          ...a,
+          photoUrl: photoByArea[a.id] ?? null,
+        }))
+      );
+    } finally {
+      if (showLoading) setLoading(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       fetchAreas();
-    }, [])
+    }, [fetchAreas])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchAreas();
+    await fetchAreas(false);
     setRefreshing(false);
   };
 
@@ -91,36 +137,112 @@ export default function AreasScreen() {
         </Pressable>
       </Modal>
       <View style={styles.container}>
-      <FlatList
-        data={areas}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => {
-          const sectorCount = item.sectors?.[0]?.count ?? 0;
-          return (
-            <Pressable
-              style={styles.card}
-              onPress={() => router.push({ pathname: '/area/[id]', params: { id: item.id } })}
-            >
-              <ThemedText style={styles.name}>{item.name}</ThemedText>
-              {item.description ? (
-                <ThemedText style={styles.description} numberOfLines={4}>{item.description}</ThemedText>
-              ) : null}
-              <RNView style={styles.statsRow}>
-                <ThemedText style={[styles.stat, styles.statFirst]}>{sectorCount} sector{sectorCount !== 1 ? 's' : ''}</ThemedText>
-                <ThemedText style={styles.stat}>{item.boulder_count} boulder{item.boulder_count !== 1 ? 's' : ''}</ThemedText>
-              </RNView>
-            </Pressable>
-          );
-        }}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <ThemedText style={styles.emptyText}>No areas yet</ThemedText>
-            {user && <ThemedText style={styles.emptySubtext}>Tap Actions to add an area</ThemedText>}
-          </View>
-        }
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      />
+        <FlatList
+          data={areas}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item, index }) => (
+            <FadeInView index={index}>
+              <AnimatedPressable
+                style={styles.card}
+                onPress={() => router.push({ pathname: '/area/[id]', params: { id: item.id } })}
+              >
+                {item.photoUrl ? (
+                  <ImageBackground
+                    source={{ uri: item.photoUrl }}
+                    style={styles.cardBackground}
+                    resizeMode="cover"
+                  >
+                    <RNView style={styles.cardOverlay} />
+                    <RNView style={styles.cardContent}>
+                      <ThemedText style={styles.cardTitle}>{item.name}</ThemedText>
+                      <RNView style={styles.cardButtons}>
+                        {item.lat != null && item.lng != null && (
+                          <Pressable
+                            style={styles.cardButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              const url =
+                                Platform.OS === 'ios'
+                                  ? `maps://?daddr=${item.lat},${item.lng}`
+                                  : Platform.OS === 'android'
+                                    ? `geo:${item.lat},${item.lng}`
+                                    : `https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}`;
+                              Linking.openURL(url);
+                            }}
+                          >
+                            <FontAwesome name="location-arrow" size={14} color="#fff" />
+                            <RNText style={styles.cardButtonText}>Navigate</RNText>
+                          </Pressable>
+                        )}
+                        <Pressable
+                          style={[styles.cardButton, styles.cardButtonPrimary]}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            router.push({ pathname: '/area/[id]', params: { id: item.id } });
+                          }}
+                        >
+                          <RNText style={styles.cardButtonTextPrimary}>View details</RNText>
+                          <FontAwesome name="chevron-right" size={14} color={Colors.dark.tint} />
+                        </Pressable>
+                      </RNView>
+                    </RNView>
+                  </ImageBackground>
+                ) : (
+                  <RNView style={styles.cardPlaceholder}>
+                    <RNView style={styles.cardOverlayLight} />
+                    <RNView style={styles.cardContent}>
+                      <ThemedText style={styles.cardTitleDark}>{item.name}</ThemedText>
+                      <RNView style={styles.cardButtons}>
+                        {item.lat != null && item.lng != null && (
+                          <Pressable
+                            style={styles.cardButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              const url =
+                                Platform.OS === 'ios'
+                                  ? `maps://?daddr=${item.lat},${item.lng}`
+                                  : Platform.OS === 'android'
+                                    ? `geo:${item.lat},${item.lng}`
+                                    : `https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}`;
+                              Linking.openURL(url);
+                            }}
+                          >
+                            <FontAwesome name="location-arrow" size={14} color="#fff" />
+                            <RNText style={styles.cardButtonText}>Navigate</RNText>
+                          </Pressable>
+                        )}
+                        <Pressable
+                          style={[styles.cardButton, styles.cardButtonPrimary]}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            router.push({ pathname: '/area/[id]', params: { id: item.id } });
+                          }}
+                        >
+                          <RNText style={styles.cardButtonTextPrimary}>View details</RNText>
+                          <FontAwesome name="chevron-right" size={14} color={Colors.dark.tint} />
+                        </Pressable>
+                      </RNView>
+                    </RNView>
+                  </RNView>
+                )}
+              </AnimatedPressable>
+            </FadeInView>
+          )}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              {loading ? (
+                <ActivityIndicator size="large" color={Colors.dark.tint} />
+              ) : (
+                <>
+                  <ThemedText style={styles.emptyText}>No areas yet</ThemedText>
+                  {user && <ThemedText style={styles.emptySubtext}>Tap Actions to add an area</ThemedText>}
+                </>
+              )}
+            </View>
+          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        />
       </View>
     </>
   );
@@ -130,18 +252,78 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   list: { padding: 16, paddingBottom: 24 },
   card: {
-    padding: 20,
+    height: CARD_HEIGHT,
     borderRadius: 14,
     marginBottom: 16,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: Colors.dark.cardBorder,
-    backgroundColor: Colors.dark.card,
   },
-  name: { fontSize: 22, fontWeight: '600', marginBottom: 8, color: Colors.dark.text, backgroundColor: 'transparent' },
-  description: { fontSize: 16, opacity: 0.85, marginBottom: 12, lineHeight: 22, color: Colors.dark.text, backgroundColor: 'transparent' },
-  statsRow: { flexDirection: 'row', marginTop: 4, backgroundColor: 'transparent' },
-  stat: { fontSize: 14, opacity: 0.7, color: Colors.dark.text, backgroundColor: 'transparent' },
-  statFirst: { marginRight: 16 },
+  cardBackground: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  cardPlaceholder: {
+    flex: 1,
+    backgroundColor: Colors.dark.card,
+    justifyContent: 'flex-end',
+  },
+  cardOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  cardOverlayLight: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+  },
+  cardContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: 12,
+  },
+  cardTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+    marginBottom: 12,
+  },
+  cardTitleDark: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.dark.text,
+    marginBottom: 12,
+  },
+  cardButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  cardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: Colors.dark.tint,
+  },
+  cardButtonPrimary: {
+    backgroundColor: Colors.dark.card,
+    borderWidth: 1,
+    borderColor: Colors.dark.tint,
+  },
+  cardButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  cardButtonTextPrimary: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.dark.tint,
+  },
   empty: { padding: 48, alignItems: 'center' },
   emptyText: { fontSize: 18, fontWeight: '600', marginBottom: 8, color: Colors.dark.text },
   emptySubtext: { fontSize: 14, opacity: 0.7, color: Colors.dark.text },

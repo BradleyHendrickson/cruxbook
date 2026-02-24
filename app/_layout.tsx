@@ -4,9 +4,11 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { AuthProvider } from '@/lib/auth-context';
 import { EarthyDarkTheme } from '@/constants/Theme';
+import { defaultFontFamily } from '@/constants/Fonts';
 import { ThemeProvider } from '@react-navigation/native';
 import Colors from '@/constants/Colors';
 
@@ -33,11 +35,13 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
-    <AuthProvider>
-      <ThemeProvider value={EarthyDarkTheme}>
-        <RootLayoutNav />
-      </ThemeProvider>
-    </AuthProvider>
+    <KeyboardProvider>
+      <AuthProvider>
+        <ThemeProvider value={EarthyDarkTheme}>
+          <RootLayoutNav />
+        </ThemeProvider>
+      </AuthProvider>
+    </KeyboardProvider>
   );
 }
 
@@ -47,7 +51,8 @@ function RootLayoutNav() {
       screenOptions={{
         headerStyle: { backgroundColor: Colors.dark.card },
         headerTintColor: Colors.dark.text,
-        headerTitleStyle: { color: Colors.dark.text },
+        headerTitleStyle: { color: Colors.dark.text, fontFamily: defaultFontFamily },
+        animation: 'slide_from_right',
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />

@@ -12,6 +12,7 @@ import {
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import SectorMapView from '@/components/SectorMapView';
 import MapLocationPicker from '@/components/MapLocationPicker';
+import { FadeInView, AnimatedPressable } from '@/components/Animated';
 import { useLocalSearchParams, router, useNavigation } from 'expo-router';
 import { regionFromPolygon } from '@/lib/mapUtils';
 import type { PolygonCoords } from '@/lib/mapUtils';
@@ -325,34 +326,36 @@ export default function SectorDetailScreen() {
       <FlatList
         data={boulders}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <Pressable
-            style={({ pressed }) => [styles.card, pressed && { opacity: 0.9 }]}
-            onPress={() =>
-              router.push({
-                pathname: '/boulder/[id]',
-                params: {
-                  id: item.id,
-                  sectorId: id,
-                  areaId: areaId ?? '',
-                  sectorName: sectorName ?? '',
-                  areaName: areaName ?? '',
-                },
-              })
-            }
-          >
-            <View style={styles.cardHeader}>
-              <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.grade}>
-                {item.problem_count} problem{item.problem_count !== 1 ? 's' : ''}
-              </Text>
-            </View>
-            {item.description ? (
-              <Text style={styles.description} numberOfLines={2}>
-                {item.description}
-              </Text>
-            ) : null}
-          </Pressable>
+        renderItem={({ item, index }) => (
+          <FadeInView index={index}>
+            <AnimatedPressable
+              style={styles.card}
+              onPress={() =>
+                router.push({
+                  pathname: '/boulder/[id]',
+                  params: {
+                    id: item.id,
+                    sectorId: id,
+                    areaId: areaId ?? '',
+                    sectorName: sectorName ?? '',
+                    areaName: areaName ?? '',
+                  },
+                })
+              }
+            >
+              <View style={styles.cardHeader}>
+                <Text style={styles.name}>{item.name}</Text>
+                <Text style={styles.grade}>
+                  {item.problem_count} problem{item.problem_count !== 1 ? 's' : ''}
+                </Text>
+              </View>
+              {item.description ? (
+                <Text style={styles.description} numberOfLines={2}>
+                  {item.description}
+                </Text>
+              ) : null}
+            </AnimatedPressable>
+          </FadeInView>
         )}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
